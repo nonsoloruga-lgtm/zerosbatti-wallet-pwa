@@ -1050,6 +1050,7 @@ async function openCropper({ dataUrl, outputMax = 1200, title = "Ritaglia", mime
         <button class="cropjs__btn" id="cjRotateLeft" type="button">⟲</button>
         <button class="cropjs__btn" id="cjRotateRight" type="button">⟳</button>
         <button class="cropjs__btn" id="cjReset" type="button">Reset</button>
+        <input class="cropjs__zoom" id="cjZoom" type="range" min="1" max="3" step="0.01" value="1" />
       </div>
 
       <div class="cropjs__footer">
@@ -1065,6 +1066,7 @@ async function openCropper({ dataUrl, outputMax = 1200, title = "Ritaglia", mime
 
   const imgEl = backdrop.querySelector("#cjImg");
   imgEl.src = dataUrl;
+  const zoomEl = backdrop.querySelector("#cjZoom");
 
   // eslint-disable-next-line no-undef
   const cropper = new Cropper(imgEl, {
@@ -1082,9 +1084,27 @@ async function openCropper({ dataUrl, outputMax = 1200, title = "Ritaglia", mime
     zoomOnWheel: false,
     movable: true,
     rotatable: true,
-    scalable: false
+    scalable: false,
+    toggleDragModeOnDblclick: false,
+    ready() {
+      computeBaseZoom();
+      zoomEl.value = "1";
+    }
   });
 
+  let baseZoom = 1;
+  const computeBaseZoom = () => {
+    try {
+      const imgData = cropper.getImageData();
+      if (imgData?.naturalWidth && imgData?.width) {
+        baseZoom = imgData.width / imgData.naturalWidth;
+      } else {
+        baseZoom = 1;
+      }
+    } catch {
+      baseZoom = 1;
+    }
+  };
   const cleanup = () => {
     try {
       cropper.destroy();
@@ -1116,9 +1136,29 @@ async function openCropper({ dataUrl, outputMax = 1200, title = "Ritaglia", mime
       cleanup();
       resolve(null);
     };
-    backdrop.querySelector("#cjRotateLeft").onclick = () => cropper.rotate(-90);
-    backdrop.querySelector("#cjRotateRight").onclick = () => cropper.rotate(90);
-    backdrop.querySelector("#cjReset").onclick = () => cropper.reset();
+    backdrop.querySelector("#cjRotateLeft").onclick = () => {
+      cropper.rotate(-90);
+      computeBaseZoom();
+      zoomEl.value = "1";
+    };
+    backdrop.querySelector("#cjRotateRight").onclick = () => {
+      cropper.rotate(90);
+      computeBaseZoom();
+      zoomEl.value = "1";
+    };
+    backdrop.querySelector("#cjReset").onclick = () => {
+      cropper.reset();
+      computeBaseZoom();
+      zoomEl.value = "1";
+    };
+    zoomEl.addEventListener("input", () => {
+      const v = Number(zoomEl.value) || 1;
+      try {
+        cropper.zoomTo(baseZoom * v);
+      } catch {
+        // ignore
+      }
+    });
     backdrop.querySelector("#cjOk").onclick = async () => {
       const out = await toDataUrl();
       cleanup();
