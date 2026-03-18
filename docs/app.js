@@ -547,23 +547,31 @@ async function openEditor(state) {
   pvLogo.src = state.logoImage || "./icons/icon-192.png";
   pvFront.src = state.frontImage || "./icons/icon-192.png";
 
-  const pickImage = async () => {
+  const pickImage = async ({ aspect, outputWidth, outputHeight, title }) => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
     input.click();
     const file = await new Promise((resolve) => (input.onchange = () => resolve(input.files?.[0] || null)));
-    if (!file) return "";
-    return await fileToDataUrl(file);
+    if (!file) return null;
+    const dataUrl = await fileToDataUrl(file);
+    const mime = file.type === "image/png" ? "image/png" : "image/jpeg";
+    return await openCropper({ dataUrl, aspect, outputWidth, outputHeight, title, mime });
   };
 
   backdrop.querySelector("#btnSetLogo").onclick = async () => {
-    state.logoImage = await pickImage();
-    pvLogo.src = state.logoImage || "./icons/icon-192.png";
+    const cropped = await pickImage({ aspect: 1, outputWidth: 512, outputHeight: 512, title: "Ritaglia logo" });
+    if (cropped) {
+      state.logoImage = cropped;
+      pvLogo.src = state.logoImage || "./icons/icon-192.png";
+    }
   };
   backdrop.querySelector("#btnSetFront").onclick = async () => {
-    state.frontImage = await pickImage();
-    pvFront.src = state.frontImage || "./icons/icon-192.png";
+    const cropped = await pickImage({ aspect: 16 / 9, outputWidth: 960, outputHeight: 540, title: "Ritaglia foto" });
+    if (cropped) {
+      state.frontImage = cropped;
+      pvFront.src = state.frontImage || "./icons/icon-192.png";
+    }
   };
 
   backdrop.querySelector("#btnCancel").onclick = () => backdrop.remove();
@@ -594,6 +602,147 @@ function fileToDataUrl(file) {
     reader.onload = () => resolve(String(reader.result || ""));
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = (e) => reject(e);
+    img.src = dataUrl;
+  });
+}
+
+function clamp(n, a, b) {
+  return Math.max(a, Math.min(b, n));
+}
+
+async function openCropper({ dataUrl, aspect = 1, outputWidth = 960, outputHeight = 540, title = "Ritaglia", mime = "image/jpeg" }) {
+  const img = await loadImage(dataUrl);
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "cropper-backdrop";
+  backdrop.innerHTML = `
+    <div class="cropper">
+      <div class="cropper__header">
+        <div class="cropper__title"></div>
+      </div>
+      <div class="cropper__body">
+        <div class="cropper__viewport" style="aspect-ratio: ${aspect};">
+          <img class="cropper__img" alt="" />
+        </div>
+        <div class="cropper__hint">Trascina per spostare • Usa lo zoom</div>
+        <input class="cropper__zoom" type="range" min="1" max="3" step="0.01" value="1" />
+      </div>
+      <div class="cropper__footer">
+        <button class="btn" id="cropCancel">Annulla</button>
+        <button class="btn btn--cta" id="cropOk">Usa</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+
+  const viewport = backdrop.querySelector(".cropper__viewport");
+  const imgEl = backdrop.querySelector(".cropper__img");
+  const zoomEl = backdrop.querySelector(".cropper__zoom");
+  const titleEl = backdrop.querySelector(".cropper__title");
+  titleEl.textContent = title;
+  imgEl.src = dataUrl;
+
+  await new Promise((r) => requestAnimationFrame(r));
+  const vb = viewport.getBoundingClientRect();
+  const vw = vb.width;
+  const vh = vb.height;
+
+  const coverScale = Math.max(vw / img.naturalWidth, vh / img.naturalHeight);
+  let scale = coverScale;
+  let x = (vw - img.naturalWidth * scale) / 2;
+  let y = (vh - img.naturalHeight * scale) / 2;
+
+  const apply = () => {
+    const rw = img.naturalWidth * scale;
+    const rh = img.naturalHeight * scale;
+    x = clamp(x, vw - rw, 0);
+    y = clamp(y, vh - rh, 0);
+    imgEl.style.width = `${rw}px`;
+    imgEl.style.height = `${rh}px`;
+    imgEl.style.transform = `translate(${x}px, ${y}px)`;
+  };
+  apply();
+
+  const zoomTo = (factor) => {
+    const newScale = coverScale * factor;
+    const cx = (vw / 2 - x) / scale;
+    const cy = (vh / 2 - y) / scale;
+    scale = newScale;
+    x = vw / 2 - cx * scale;
+    y = vh / 2 - cy * scale;
+    apply();
+  };
+  zoomEl.addEventListener("input", () => zoomTo(Number(zoomEl.value)));
+
+  let dragging = false;
+  let startX = 0;
+  let startY = 0;
+  let baseX = 0;
+  let baseY = 0;
+
+  viewport.addEventListener("pointerdown", (e) => {
+    dragging = true;
+    viewport.setPointerCapture(e.pointerId);
+    startX = e.clientX;
+    startY = e.clientY;
+    baseX = x;
+    baseY = y;
+  });
+  viewport.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    x = baseX + (e.clientX - startX);
+    y = baseY + (e.clientY - startY);
+    apply();
+  });
+  viewport.addEventListener("pointerup", () => {
+    dragging = false;
+  });
+  viewport.addEventListener("pointercancel", () => {
+    dragging = false;
+  });
+
+  const exportCropped = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = outputWidth;
+    canvas.height = outputHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    const srcX = (-x) / scale;
+    const srcY = (-y) / scale;
+    const srcW = vw / scale;
+    const srcH = vh / scale;
+
+    ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, outputWidth, outputHeight);
+    if (mime === "image/png") return canvas.toDataURL("image/png");
+    return canvas.toDataURL("image/jpeg", 0.88);
+  };
+
+  return await new Promise((resolve) => {
+    const cleanup = () => backdrop.remove();
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) {
+        cleanup();
+        resolve(null);
+      }
+    });
+    backdrop.querySelector("#cropCancel").onclick = () => {
+      cleanup();
+      resolve(null);
+    };
+    backdrop.querySelector("#cropOk").onclick = () => {
+      const out = exportCropped();
+      cleanup();
+      resolve(out);
+    };
   });
 }
 

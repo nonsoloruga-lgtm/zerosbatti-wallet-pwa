@@ -242,6 +242,53 @@ body {
 }
 .sheet__btn:hover { background: rgba(127, 216, 214, 0.10); }
 
+.cropper-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  z-index: 70;
+}
+.cropper {
+  width: 100%;
+  max-width: 520px;
+  background: rgba(255,255,255,0.98);
+  border-radius: 18px;
+  border: 1px solid var(--stroke);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.cropper__header { padding: 12px 14px 10px; font-weight: 900; }
+.cropper__body { padding: 0 14px 12px; }
+.cropper__viewport {
+  width: 100%;
+  background: #111;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.10);
+  overflow: hidden;
+  position: relative;
+  touch-action: none;
+}
+.cropper__img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  user-select: none;
+  -webkit-user-drag: none;
+  will-change: transform;
+}
+.cropper__hint { margin-top: 10px; font-size: 12px; color: var(--muted); text-align: center; }
+.cropper__zoom { width: 100%; margin-top: 10px; }
+.cropper__footer {
+  padding: 12px 14px 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
 .scanner {
   position: fixed;
   inset: 0;
@@ -268,4 +315,3 @@ body {
   opacity: 0.9;
   text-align: center;
 }
-
