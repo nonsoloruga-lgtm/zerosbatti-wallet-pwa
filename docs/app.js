@@ -413,18 +413,9 @@ async function openManageSheet({ mode, card }) {
 fabAdd.addEventListener("click", () => openManageSheet({ mode: "new", card: null }));
 
 async function detectFromImageFile(file) {
-  // Preferred path: native BarcodeDetector (Chrome/Android).
-  if ("BarcodeDetector" in window) {
-    const bitmap = await createImageBitmap(file);
-    const formats = ["qr_code", "code_128", "ean_13", "ean_8", "upc_a", "upc_e", "code_39"];
-    // eslint-disable-next-line no-undef
-    const detector = new BarcodeDetector({ formats });
-    const results = await detector.detect(bitmap);
-    const hit = results?.[0];
-    return hit ? { code: hit.rawValue || "", format: hit.format || "" } : null;
-  }
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent || "");
 
-  // Fallback for iOS Safari: html5-qrcode (format may be unknown for still images).
+  // iOS: prefer html5-qrcode for still images (BarcodeDetector support/behavior varies and can be unreliable).
   if (typeof window.Html5Qrcode !== "undefined") {
     const id = `scanfile_${Date.now()}`;
     const host = document.createElement("div");
@@ -446,6 +437,17 @@ async function detectFromImageFile(file) {
       }
       host.remove();
     }
+  }
+
+  // Preferred path: native BarcodeDetector (Chrome/Android).
+  if (!ios && "BarcodeDetector" in window) {
+    const bitmap = await createImageBitmap(file);
+    const formats = ["qr_code", "code_128", "ean_13", "ean_8", "upc_a", "upc_e", "code_39"];
+    // eslint-disable-next-line no-undef
+    const detector = new BarcodeDetector({ formats });
+    const results = await detector.detect(bitmap);
+    const hit = results?.[0];
+    return hit ? { code: hit.rawValue || "", format: hit.format || "" } : null;
   }
 
   return null;
@@ -740,22 +742,25 @@ async function openScannerHtml5Qrcode() {
   btnClose.addEventListener("click", () => (finalize ? void finalize(null) : void stop()));
 
   const config = {
-    fps: 10,
+    fps: 6,
     // Comfortable scan window; works in portrait and landscape.
     qrbox: (vw, vh) => {
-      const size = Math.floor(Math.min(vw, vh) * 0.72);
+      const size = Math.floor(Math.min(vw, vh) * 0.62);
       return { width: size, height: size };
     },
     experimentalFeatures: {
-      useBarCodeDetectorIfSupported: true
+      // On iOS this can increase CPU usage; keep decoding consistent.
+      useBarCodeDetectorIfSupported: false
     }
   };
 
   return new Promise((resolve) => {
     let resolved = false;
+    let timeoutId = null;
     const safeResolve = (val) => {
       if (resolved) return;
       resolved = true;
+      if (timeoutId) clearTimeout(timeoutId);
       resolve(val);
     };
 
@@ -815,6 +820,11 @@ async function openScannerHtml5Qrcode() {
 
     void startAttempt();
 
+    // Hard timeout: avoid overheating if decoding never succeeds.
+    timeoutId = setTimeout(() => {
+      void finalize(null);
+    }, 18000);
+
     // Best-effort iOS tuning: once the internal <video> appears, apply track constraints + slight zoom.
     (async () => {
       try {
@@ -824,10 +834,12 @@ async function openScannerHtml5Qrcode() {
         const s = vid.srcObject;
         const track = s?.getVideoTracks?.()[0] || null;
         if (track) {
-          const opt = await optimizeVideoTrack(track, { fps: 30, zoom: 1.2, focusMode: "continuous" });
-          if (!opt.zoomApplied) applyVideoCssZoom(vid, 1.2);
-        } else {
-          applyVideoCssZoom(vid, 1.2);
+          // Keep this light: iOS can heat up quickly with aggressive constraints.
+          const opt = await optimizeVideoTrack(track, { fps: 30, zoom: 1.1, focusMode: "continuous" });
+          // Avoid CSS zoom fallback on iOS (can increase GPU/CPU usage).
+          if (!opt.zoomApplied) {
+            // no-op
+          }
         }
       } catch {
         // ignore
@@ -841,13 +853,10 @@ function isIOS() {
 }
 
 async function openScanner() {
-  // iOS: try the simplest native path first if available, then html5-qrcode.
+  // iOS: prefer html5-qrcode for reliability and lower CPU usage.
   if (isIOS()) {
-    if ("BarcodeDetector" in window) {
-      const r = await openScannerBarcodeDetector();
-      if (r) return r;
-    }
     if (typeof window.Html5Qrcode !== "undefined") return openScannerHtml5Qrcode();
+    if ("BarcodeDetector" in window) return openScannerBarcodeDetector();
   }
   // Chrome/Android
   if ("BarcodeDetector" in window) return openScannerBarcodeDetector();
@@ -936,10 +945,11 @@ async function startScanner() {
   const result = await openScanner();
   if (result) return result;
 
-  // iOS fallback: allow scanning from a captured photo if live camera is not available.
+  // iOS fallback: allow scanning from a captured photo if live camera is not available
+  // OR if live scanning timed out (to reduce overheating).
   if (isIOS()) {
     const ok = confirm(
-      "Lo scanner live non è disponibile su questo iPhone.\n\nVuoi scansionare scattando una foto al barcode/QR?"
+      "Non riesco ad avviare/leggere dallo scanner live su questo iPhone.\n\nVuoi scansionare scattando una foto al barcode/QR?"
     );
     if (!ok) return null;
     return openScannerPhotoCapture();
