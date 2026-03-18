@@ -1,5 +1,5 @@
 /* Basic offline-first cache for the PWA. */
-const CACHE_NAME = "zerosbatti-cache-v2";
+const CACHE_NAME = "zerosbatti-cache-v3";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -9,7 +9,13 @@ const CORE_ASSETS = [
   "./vendor/html5-qrcode.min.js",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
-  "./icons/icon-512.png"
+  "./icons/icon-512.png",
+  "./icons/icon-768.png",
+  "./icons/icon-192-maskable.png",
+  "./icons/icon-512-maskable.png",
+  "./icons/apple-touch-icon.png",
+  "./icons/icon-167.png",
+  "./icons/icon-152.png"
 ];
 
 self.addEventListener("install", (event) => {
@@ -39,7 +45,20 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     (async () => {
       const cache = await caches.open(CACHE_NAME);
-      const cached = await cache.match(req);
+      const isNavigation = req.mode === "navigate" || (req.headers.get("accept") || "").includes("text/html");
+      if (isNavigation) {
+        try {
+          const res = await fetch(req);
+          // Keep a fresh app shell for offline.
+          if (res && res.ok) cache.put("./index.html", res.clone());
+          return res;
+        } catch {
+          const fallback = await cache.match("./index.html", { ignoreSearch: true });
+          return fallback || new Response("Offline", { status: 503 });
+        }
+      }
+
+      const cached = await cache.match(req, { ignoreSearch: true });
       if (cached) return cached;
 
       try {
@@ -50,9 +69,7 @@ self.addEventListener("fetch", (event) => {
         }
         return res;
       } catch {
-        // If offline and not cached, fallback to app shell.
-        const fallback = await cache.match("./index.html");
-        return fallback || new Response("Offline", { status: 503 });
+        return new Response("Offline", { status: 503 });
       }
     })()
   );
