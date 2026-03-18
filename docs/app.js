@@ -468,9 +468,48 @@ fabAdd.addEventListener("click", () => openManageSheet({ mode: "new", card: null
 async function detectFromImageFile(file) {
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent || "");
 
-  // iOS: prefer html5-qrcode for still images (BarcodeDetector support/behavior varies and can be unreliable).
+  const normalized = await normalizeImageFileForDecode(file);
+
+  // Prefer ZXing for still images (generally more reliable across iOS/Android for photos).
+  if (typeof window.ZXing !== "undefined") {
+    const url = URL.createObjectURL(normalized);
+    // eslint-disable-next-line no-undef
+    const reader = new ZXing.BrowserMultiFormatReader();
+    try {
+      const img = new Image();
+      img.decoding = "async";
+      img.src = url;
+      if (typeof img.decode === "function") {
+        await img.decode();
+      } else {
+        await new Promise((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error("img_load_failed"));
+        });
+      }
+      const result = await reader.decodeFromImageElement(img);
+      const text = result?.getText ? result.getText() : result?.text || "";
+      const fmt = result?.getBarcodeFormat ? result.getBarcodeFormat() : null;
+      const format = fmt === (window.ZXing?.BarcodeFormat?.QR_CODE ?? -1) ? "qr_code" : "";
+      return text ? { code: String(text), format } : null;
+    } catch {
+      return null;
+    } finally {
+      try {
+        reader.reset?.();
+      } catch {
+        // ignore
+      }
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  // iOS fallback: html5-qrcode scanFile.
   if (typeof window.Html5Qrcode !== "undefined") {
-    const normalized = await normalizeImageFileForDecode(file);
     const id = `scanfile_${Date.now()}`;
     const host = document.createElement("div");
     host.id = id;
