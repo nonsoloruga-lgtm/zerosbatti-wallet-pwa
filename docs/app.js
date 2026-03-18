@@ -159,12 +159,11 @@ function renderCards() {
     const imgSrc = card.logoImage || card.frontImage || "";
     if (imgSrc) {
       const th = cardTheme(card.id || name);
-      media.style.backgroundImage = `${th.bg2}, ${th.bg}`;
-      const img = document.createElement("img");
-      img.className = "carditem__img";
-      img.alt = "";
-      img.src = imgSrc;
-      media.appendChild(img);
+      // Use CSS background for consistent centering across browsers (some Android builds are flaky with object-fit).
+      media.style.backgroundImage = `url("${imgSrc}"), ${th.bg2}, ${th.bg}`;
+      media.style.backgroundRepeat = "no-repeat, no-repeat, no-repeat, no-repeat";
+      media.style.backgroundPosition = "center, center, center, center";
+      media.style.backgroundSize = "contain, auto, auto, auto";
     } else {
       const ph = document.createElement("div");
       ph.className = "carditem__ph";
@@ -1025,12 +1024,19 @@ async function openCropper({ dataUrl, outputMax = 1200, title = "Ritaglia", mime
     return null;
   }
 
-  const aspectRatio = (() => {
-    if (presetAspect === "square") return 1;
-    if (presetAspect === "85:55") return 85 / 55;
-    if (presetAspect === "16:9") return 16 / 9;
+  const aspectFromPreset = (p) => {
+    if (p === "square") return 1;
+    if (p === "85:55") return 85 / 55;
+    if (p === "16:9") return 16 / 9;
     return NaN; // free
-  })();
+  };
+  const aspectLabel = (p) => {
+    if (p === "square") return "Quadrato";
+    if (p === "85:55") return "Tessera (85:55)";
+    if (p === "16:9") return "16:9";
+    return "Libero";
+  };
+  const defaultAspect = aspectFromPreset(presetAspect);
 
   const backdrop = document.createElement("div");
   backdrop.className = "cropjs-backdrop";
@@ -1050,6 +1056,10 @@ async function openCropper({ dataUrl, outputMax = 1200, title = "Ritaglia", mime
         <button class="cropjs__btn" id="cjRotateLeft" type="button">⟲</button>
         <button class="cropjs__btn" id="cjRotateRight" type="button">⟳</button>
         <button class="cropjs__btn" id="cjReset" type="button">Reset</button>
+        <select class="cropjs__select" id="cjAspect">
+          <option value="default">${aspectLabel(presetAspect)}</option>
+          <option value="free">Libero</option>
+        </select>
         <input class="cropjs__zoom" id="cjZoom" type="range" min="1" max="3" step="0.01" value="1" />
       </div>
 
@@ -1067,10 +1077,11 @@ async function openCropper({ dataUrl, outputMax = 1200, title = "Ritaglia", mime
   const imgEl = backdrop.querySelector("#cjImg");
   imgEl.src = dataUrl;
   const zoomEl = backdrop.querySelector("#cjZoom");
+  const aspectEl = backdrop.querySelector("#cjAspect");
 
   // eslint-disable-next-line no-undef
   const cropper = new Cropper(imgEl, {
-    aspectRatio,
+    aspectRatio: defaultAspect,
     viewMode: 1,
     dragMode: "move",
     autoCropArea: 0.92,
@@ -1150,7 +1161,14 @@ async function openCropper({ dataUrl, outputMax = 1200, title = "Ritaglia", mime
       cropper.reset();
       computeBaseZoom();
       zoomEl.value = "1";
+      aspectEl.value = "default";
+      cropper.setAspectRatio(defaultAspect);
     };
+    aspectEl.addEventListener("change", () => {
+      const v = aspectEl.value;
+      const next = v === "free" ? NaN : defaultAspect;
+      cropper.setAspectRatio(next);
+    });
     zoomEl.addEventListener("input", () => {
       const v = Number(zoomEl.value) || 1;
       try {
