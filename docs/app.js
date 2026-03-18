@@ -427,12 +427,18 @@ function guessNameFromFilename(filename) {
 }
 
 async function openManageSheet({ mode, card }) {
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent || "");
   const backdrop = document.createElement("div");
   backdrop.className = "sheet-backdrop";
   backdrop.innerHTML = `
     <div class="sheet">
       <div class="sheet__title">${mode === "edit" ? "Modifica tessera" : "Aggiungi tessera"}</div>
-      <button class="sheet__btn" data-action="scan">Scansiona codice</button>
+      ${
+        ios
+          ? `<button class="sheet__btn" data-action="scanphoto">Scatta foto al codice (consigliato su iPhone)</button>
+             <button class="sheet__btn" data-action="scan">Scanner live (beta)</button>`
+          : `<button class="sheet__btn" data-action="scan">Scansiona codice</button>`
+      }
       <button class="sheet__btn" data-action="import">Importa da immagine</button>
       <button class="sheet__btn" data-action="manual">Inserisci manualmente</button>
       <button class="sheet__btn" data-action="cancel">Annulla</button>
@@ -464,6 +470,7 @@ async function detectFromImageFile(file) {
 
   // iOS: prefer html5-qrcode for still images (BarcodeDetector support/behavior varies and can be unreliable).
   if (typeof window.Html5Qrcode !== "undefined") {
+    const normalized = await normalizeImageFileForDecode(file);
     const id = `scanfile_${Date.now()}`;
     const host = document.createElement("div");
     host.id = id;
@@ -472,7 +479,7 @@ async function detectFromImageFile(file) {
     // eslint-disable-next-line no-undef
     const scanner = new Html5Qrcode(id);
     try {
-      const decodedText = await scanner.scanFile(file, true);
+      const decodedText = await scanner.scanFile(normalized, true);
       return decodedText ? { code: String(decodedText), format: "" } : null;
     } catch {
       return null;
@@ -498,6 +505,48 @@ async function detectFromImageFile(file) {
   }
 
   return null;
+}
+
+async function normalizeImageFileForDecode(file, maxSize = 1600) {
+  // Some iOS camera images can be HEIC/very large; convert to a smaller JPEG for decoding.
+  try {
+    if (!file) return file;
+    const type = (file.type || "").toLowerCase();
+    const canKeep =
+      type.includes("jpeg") || type.includes("jpg") || type.includes("png") || type.includes("webp") || type.includes("heic") || type.includes("heif");
+    if (!canKeep) return file;
+
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.decoding = "async";
+    img.src = url;
+    await new Promise((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("img_load_failed"));
+    });
+    URL.revokeObjectURL(url);
+
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+    if (!w || !h) return file;
+
+    const scale = Math.min(1, maxSize / Math.max(w, h));
+    const outW = Math.max(1, Math.round(w * scale));
+    const outH = Math.max(1, Math.round(h * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = outW;
+    canvas.height = outH;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, outW, outH);
+
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+    if (!blob) return file;
+
+    return new File([blob], "scan.jpg", { type: "image/jpeg" });
+  } catch {
+    return file;
+  }
 }
 
 async function openScannerBarcodeDetector() {
@@ -1026,6 +1075,11 @@ async function openManageFlow({ action, mode, card }) {
   let detection = null;
   if (action === "scan") {
     detection = await startScanner();
+  } else if (action === "scanphoto") {
+    detection = await openScannerPhotoCapture();
+    if (!detection) {
+      alert("Non ho trovato nessun barcode/QR nella foto. Prova a riavvicinarti e a mettere più luce.");
+    }
   } else if (action === "import") {
     detection = await pickAndDetectImage(state);
   }
