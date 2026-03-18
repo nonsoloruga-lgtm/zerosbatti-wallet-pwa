@@ -581,33 +581,28 @@ async function openEditor(state) {
           <option value="qr">QR Code</option>
         </select>
 
-        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; margin-top:14px;">
-          <button class="btn btn--outlineRed" id="btnSetLogo">Logo</button>
-          <button class="btn" id="btnSetFront">Fronte</button>
-          <button class="btn btn--outlineRed" id="btnSetBack">Retro</button>
-        </div>
-        <div class="pvrow" style="margin-top:10px;">
-          <div class="pv" id="pvLogoWrap">
-            <img id="pvLogoImg" class="pv__img" alt="" />
-            <div class="pv__ph">
-              <div class="pv__init" id="pvLogoInit"></div>
-              <div class="pv__name" id="pvLogoName"></div>
+        <div class="pickrow" style="margin-top:14px;">
+          <button type="button" class="pickcard pickcard--accent" id="pickLogo">
+            <div class="pickcard__label">Logo</div>
+            <div class="pv pickcard__pv pickcard__pv--square" id="pvLogoWrap">
+              <img id="pvLogoImg" class="pv__img" alt="" />
+              <div class="pv__ph">
+                <div class="pv__init" id="pvLogoInit"></div>
+                <div class="pv__name" id="pvLogoName"></div>
+              </div>
             </div>
-          </div>
-          <div class="pv" id="pvFrontWrap">
-            <img id="pvFrontImg" class="pv__img" alt="" />
-            <div class="pv__ph">
-              <div class="pv__init" id="pvFrontInit"></div>
-              <div class="pv__name" id="pvFrontName"></div>
+          </button>
+
+          <button type="button" class="pickcard pickcard--accent" id="pickBack">
+            <div class="pickcard__label">Retro</div>
+            <div class="pv pickcard__pv" id="pvBackWrap">
+              <img id="pvBackImg" class="pv__img" alt="" />
+              <div class="pv__ph">
+                <div class="pv__init" id="pvBackInit"></div>
+                <div class="pv__name" id="pvBackName"></div>
+              </div>
             </div>
-          </div>
-          <div class="pv" id="pvBackWrap">
-            <img id="pvBackImg" class="pv__img" alt="" />
-            <div class="pv__ph">
-              <div class="pv__init" id="pvBackInit"></div>
-              <div class="pv__name" id="pvBackName"></div>
-            </div>
-          </div>
+          </button>
         </div>
 
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:14px;">
@@ -626,10 +621,6 @@ async function openEditor(state) {
   const pvLogoImg = backdrop.querySelector("#pvLogoImg");
   const pvLogoInit = backdrop.querySelector("#pvLogoInit");
   const pvLogoName = backdrop.querySelector("#pvLogoName");
-  const pvFrontWrap = backdrop.querySelector("#pvFrontWrap");
-  const pvFrontImg = backdrop.querySelector("#pvFrontImg");
-  const pvFrontInit = backdrop.querySelector("#pvFrontInit");
-  const pvFrontName = backdrop.querySelector("#pvFrontName");
   const pvBackWrap = backdrop.querySelector("#pvBackWrap");
   const pvBackImg = backdrop.querySelector("#pvBackImg");
   const pvBackInit = backdrop.querySelector("#pvBackInit");
@@ -665,15 +656,6 @@ async function openEditor(state) {
       name: edName.value
     });
     renderPv({
-      wrap: pvFrontWrap,
-      imgEl: pvFrontImg,
-      initEl: pvFrontInit,
-      nameEl: pvFrontName,
-      imageData: state.frontImage,
-      key: state.id + "_front",
-      name: edName.value
-    });
-    renderPv({
       wrap: pvBackWrap,
       imgEl: pvBackImg,
       initEl: pvBackInit,
@@ -698,21 +680,14 @@ async function openEditor(state) {
     return await openCropper({ dataUrl, outputMax, title, mime, presetAspect });
   };
 
-  backdrop.querySelector("#btnSetLogo").onclick = async () => {
+  backdrop.querySelector("#pickLogo").onclick = async () => {
     const cropped = await pickImage({ presetAspect: "square", outputMax: 512, title: "Ritaglia logo" });
     if (cropped) {
       state.logoImage = cropped;
       refreshPvs();
     }
   };
-  backdrop.querySelector("#btnSetFront").onclick = async () => {
-    const cropped = await pickImage({ presetAspect: "16:9", outputMax: 1200, title: "Ritaglia fronte" });
-    if (cropped) {
-      state.frontImage = cropped;
-      refreshPvs();
-    }
-  };
-  backdrop.querySelector("#btnSetBack").onclick = async () => {
+  backdrop.querySelector("#pickBack").onclick = async () => {
     const cropped = await pickImage({ presetAspect: "16:9", outputMax: 1200, title: "Ritaglia retro" });
     if (cropped) {
       state.backImage = cropped;

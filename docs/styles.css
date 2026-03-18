@@ -299,10 +299,43 @@ body {
 }
 .sheet__btn:hover { background: rgba(127, 216, 214, 0.10); }
 
-.pvrow {
+.pickrow {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 10px;
+}
+.pickcard {
+  border: 1px solid var(--stroke);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.92);
+  padding: 10px;
+  text-align: left;
+  box-shadow: 0 8px 18px rgba(16, 27, 43, 0.06);
+  transition: transform 140ms ease, box-shadow 140ms ease, filter 140ms ease;
+}
+.pickcard--accent {
+  border: 2px solid var(--coral);
+}
+.pickcard:active {
+  transform: scale(0.99);
+  filter: brightness(0.98);
+}
+@media (hover: hover) {
+  .pickcard:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 22px rgba(16, 27, 43, 0.10);
+  }
+}
+.pickcard__label {
+  font-weight: 900;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+.pickcard__pv {
+  border-radius: 12px;
+}
+.pickcard__pv--square {
+  /* keep for future overrides */
 }
 .pv {
   width: 100%;
@@ -312,6 +345,7 @@ body {
   position: relative;
   overflow: hidden;
 }
+.pv.pickcard__pv { height: 104px; }
 .pv__img {
   position: absolute;
   inset: 0;
