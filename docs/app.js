@@ -893,6 +893,54 @@ async function openEditor(state) {
   refreshPvs();
   edName.addEventListener("input", () => refreshPvs());
 
+  const resizeImageDataUrlToMax = async ({ dataUrl, max = 1200, mime = "image/jpeg" }) => {
+    const img = await loadImage(dataUrl);
+    const w = img.naturalWidth || 1;
+    const h = img.naturalHeight || 1;
+    const scale = Math.min(1, max / Math.max(w, h));
+    const outW = Math.max(1, Math.round(w * scale));
+    const outH = Math.max(1, Math.round(h * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = outW;
+    canvas.height = outH;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return dataUrl;
+    if (mime !== "image/png") {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, outW, outH);
+    }
+    ctx.drawImage(img, 0, 0, outW, outH);
+    return mime === "image/png" ? canvas.toDataURL("image/png") : canvas.toDataURL("image/jpeg", 0.9);
+  };
+
+  const openPhotoAcquiredSheet = async () => {
+    const sheet = document.createElement("div");
+    sheet.className = "sheet-backdrop";
+    sheet.innerHTML = `
+      <div class="sheet">
+        <div class="sheet__title">Foto acquisita</div>
+        <button class="sheet__btn" data-action="edit">Modifica foto (ritaglio)</button>
+        <button class="sheet__btn sheet__btn--cta" data-action="use">Usa senza modifiche</button>
+        <button class="sheet__btn" data-action="cancel">Annulla</button>
+      </div>
+    `;
+    document.body.appendChild(sheet);
+
+    sheet.addEventListener("click", (e) => {
+      if (e.target === sheet) sheet.remove();
+    });
+
+    return await new Promise((resolve) => {
+      sheet.querySelectorAll(".sheet__btn").forEach((b) => {
+        b.addEventListener("click", () => {
+          const action = b.getAttribute("data-action");
+          sheet.remove();
+          resolve(action === "edit" || action === "use" ? action : null);
+        });
+      });
+    });
+  };
+
   const pickImage = async ({ outputMax, title, presetAspect }) => {
     const input = document.createElement("input");
     input.type = "file";
@@ -902,6 +950,11 @@ async function openEditor(state) {
     if (!file) return null;
     const dataUrl = await fileToDataUrl(file);
     const mime = file.type === "image/png" ? "image/png" : "image/jpeg";
+    const choice = await openPhotoAcquiredSheet();
+    if (!choice) return null;
+    if (choice === "use") {
+      return await resizeImageDataUrlToMax({ dataUrl, max: outputMax, mime });
+    }
     return await openCropper({ dataUrl, outputMax, title, mime, presetAspect });
   };
 
