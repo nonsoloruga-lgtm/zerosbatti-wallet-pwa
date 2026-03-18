@@ -312,7 +312,7 @@ body {
   border-radius: 14px;
   background: rgba(255,255,255,0.92);
   padding: 10px;
-  text-align: left;
+  text-align: center;
   box-shadow: 0 8px 18px rgba(16, 27, 43, 0.06);
   transition: transform 140ms ease, box-shadow 140ms ease, filter 140ms ease;
 }
@@ -333,6 +333,7 @@ body {
   font-weight: 900;
   color: var(--ink);
   margin-bottom: 8px;
+  text-align: center;
 }
 .pickcard__pv {
   border-radius: 12px;
@@ -513,10 +514,7 @@ body {
   background: #0b0f16;
   overflow: hidden;
 }
-.cropjs__stage img {
-  display: block;
-  max-width: 100%;
-}
+.cropjs__stage img { display: block; }
 .cropjs__bar {
   display: flex;
   gap: 10px;
