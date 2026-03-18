@@ -42,7 +42,24 @@ body {
   background: rgba(0,0,0,0.2);
   color: #fff;
   font-size: 18px;
+  cursor: pointer;
+  touch-action: manipulation;
 }
+.installbtn {
+  height: 42px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 0;
+  background: rgba(0,0,0,0.22);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.installbtn:active,
+.iconbtn:active { transform: translateY(1px); }
 
 .main { padding: 14px 16px 92px; }
 .view { display: none; }

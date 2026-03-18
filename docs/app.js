@@ -56,10 +56,12 @@ tabCards.addEventListener("click", () => showView("cards"));
 tabInfo.addEventListener("click", () => showView("info"));
 
 let deferredInstallPrompt = null;
+let lastInstallTapAt = 0;
 
 function setInstallButtonVisible(visible) {
   if (!btnInstall) return;
-  btnInstall.style.display = visible ? "inline-flex" : "none";
+  btnInstall.classList.toggle("hidden", !visible);
+  btnInstall.disabled = !visible;
 }
 
 function openInstallHelpSheet() {
@@ -100,6 +102,7 @@ function updateInstallUi() {
   const ios = typeof isIOS === "function" ? isIOS() : /iphone|ipad|ipod/i.test(navigator.userAgent || "");
   // Android: show only if we actually have the prompt. iOS: show to display instructions.
   setInstallButtonVisible(ios || !!deferredInstallPrompt);
+  if (ios && btnInstall) btnInstall.textContent = "Scarica";
 }
 
 window.addEventListener("beforeinstallprompt", (e) => {
@@ -114,7 +117,15 @@ window.addEventListener("appinstalled", () => {
 });
 
 if (btnInstall) {
-  btnInstall.addEventListener("click", async () => {
+  const onInstallActivate = async (e) => {
+    // Debounce (some mobile browsers fire both touch and click).
+    const now = Date.now();
+    if (now - lastInstallTapAt < 500) return;
+    lastInstallTapAt = now;
+
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+
     if (typeof isStandaloneDisplayMode === "function" && isStandaloneDisplayMode()) return;
     if (deferredInstallPrompt) {
       try {
@@ -129,7 +140,10 @@ if (btnInstall) {
       return;
     }
     openInstallHelpSheet();
-  });
+  };
+
+  btnInstall.addEventListener("click", onInstallActivate);
+  btnInstall.addEventListener("touchend", onInstallActivate, { passive: false });
 }
 
 btnSearch.addEventListener("click", () => {
