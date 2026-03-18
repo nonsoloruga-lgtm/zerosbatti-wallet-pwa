@@ -397,6 +397,7 @@ async function openScannerBarcodeDetector() {
     });
     video.srcObject = stream;
     await video.play();
+    markCameraPermissionGranted();
   } catch (e) {
     stop();
     alert("Permesso fotocamera negato o non disponibile.");
@@ -588,6 +589,9 @@ async function openScannerHtml5Qrcode() {
         },
         () => {}
       )
+      .then(() => {
+        markCameraPermissionGranted();
+      })
       .catch(async () => {
         await stop();
         alert("Permesso fotocamera negato o non disponibile.");
@@ -624,6 +628,71 @@ async function openScanner() {
   return null;
 }
 
+function isStandaloneDisplayMode() {
+  // iOS uses navigator.standalone; others use display-mode media query.
+  // eslint-disable-next-line no-undef
+  if (typeof navigator !== "undefined" && "standalone" in navigator) return !!navigator.standalone;
+  return window.matchMedia?.("(display-mode: standalone)")?.matches || false;
+}
+
+async function queryCameraPermissionState() {
+  try {
+    if (!navigator.permissions || typeof navigator.permissions.query !== "function") return "unknown";
+    // Spec name is "camera". Some browsers may throw; we handle that.
+    const res = await navigator.permissions.query({ name: "camera" });
+    return res?.state || "unknown"; // "granted" | "denied" | "prompt"
+  } catch {
+    return "unknown";
+  }
+}
+
+function markCameraPermissionGranted() {
+  try {
+    localStorage.setItem("zerosbatti_cam_granted", "1");
+  } catch {
+    // ignore
+  }
+}
+
+function wasCameraPermissionGrantedBefore() {
+  try {
+    return localStorage.getItem("zerosbatti_cam_granted") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function showCameraDeniedHelp() {
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent || "");
+  if (ios && !isStandaloneDisplayMode()) {
+    alert(
+      "Permesso fotocamera negato.\n\nSu iPhone conviene installare la PWA (Aggiungi alla schermata Home): iOS tende a ricordare meglio i permessi rispetto a Safari.\n\nPoi abilita la fotocamera per questo sito in Impostazioni -> Safari -> Fotocamera (o Impostazioni -> Privacy -> Fotocamera)."
+    );
+    return;
+  }
+  alert(
+    "Permesso fotocamera negato.\n\nAbilita la fotocamera per questo sito nelle impostazioni del browser (Permessi sito) e riprova."
+  );
+}
+
+async function startScanner() {
+  const perm = await queryCameraPermissionState();
+  if (perm === "denied") {
+    showCameraDeniedHelp();
+    return null;
+  }
+
+  // If the browser says it's granted (or we have a previous successful start), start immediately.
+  // Note: getUserMedia often still requires a user gesture on some platforms; in this app startScanner()
+  // is invoked from a click flow, so it's safe.
+  if (perm === "granted" || wasCameraPermissionGrantedBefore()) {
+    return openScanner();
+  }
+
+  // "prompt"/unknown: try to start; browser will ask once if needed.
+  return openScanner();
+}
+
 async function openManageFlow({ action, mode, card }) {
   const id = mode === "edit" ? card.id : newId();
   const state = {
@@ -638,7 +707,7 @@ async function openManageFlow({ action, mode, card }) {
 
   let detection = null;
   if (action === "scan") {
-    detection = await openScanner();
+    detection = await startScanner();
   } else if (action === "import") {
     detection = await pickAndDetectImage(state);
   }
