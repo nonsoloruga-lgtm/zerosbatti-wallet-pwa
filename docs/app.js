@@ -427,18 +427,12 @@ function guessNameFromFilename(filename) {
 }
 
 async function openManageSheet({ mode, card }) {
-  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent || "");
   const backdrop = document.createElement("div");
   backdrop.className = "sheet-backdrop";
   backdrop.innerHTML = `
     <div class="sheet">
       <div class="sheet__title">${mode === "edit" ? "Modifica tessera" : "Aggiungi tessera"}</div>
-      ${
-        ios
-          ? `<button class="sheet__btn" data-action="scanphoto">Scatta foto al codice (consigliato su iPhone)</button>
-             <button class="sheet__btn" data-action="scan">Scanner live (beta)</button>`
-          : `<button class="sheet__btn" data-action="scan">Scansiona codice</button>`
-      }
+      <button class="sheet__btn" data-action="scan">Scansiona codice</button>
       <button class="sheet__btn" data-action="import">Importa da immagine</button>
       <button class="sheet__btn" data-action="manual">Inserisci manualmente</button>
       <button class="sheet__btn" data-action="cancel">Annulla</button>
@@ -1312,11 +1306,6 @@ async function openManageFlow({ action, mode, card }) {
   let detection = null;
   if (action === "scan") {
     detection = await startScanner();
-  } else if (action === "scanphoto") {
-    detection = await openScannerPhotoCapture();
-    if (!detection) {
-      alert("Non ho trovato nessun barcode/QR nella foto. Prova a riavvicinarti e a mettere più luce.");
-    }
   } else if (action === "import") {
     detection = await pickAndDetectImage(state);
   }
