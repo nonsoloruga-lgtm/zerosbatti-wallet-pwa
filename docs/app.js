@@ -58,6 +58,53 @@ tabInfo.addEventListener("click", () => showView("info"));
 let deferredInstallPrompt = null;
 let lastInstallTapAt = 0;
 
+// Resource killer: iOS can overheat if camera/video keeps running in background.
+const activeCleanupFns = new Set();
+function registerCleanup(fn) {
+  if (typeof fn !== "function") return () => {};
+  activeCleanupFns.add(fn);
+  return () => activeCleanupFns.delete(fn);
+}
+
+async function killActiveResources(reason = "") {
+  const fns = Array.from(activeCleanupFns);
+  activeCleanupFns.clear();
+  for (const fn of fns) {
+    try {
+      await fn();
+    } catch {
+      // ignore
+    }
+  }
+
+  // Hard-stop any remaining <video> tracks just in case.
+  try {
+    document.querySelectorAll("video").forEach((v) => {
+      const s = v.srcObject;
+      try {
+        s?.getTracks?.().forEach((t) => t.stop());
+      } catch {
+        // ignore
+      }
+      v.srcObject = null;
+    });
+  } catch {
+    // ignore
+  }
+
+  // Remove scanner overlays if left behind.
+  try {
+    document.querySelectorAll(".scanner").forEach((el) => el.remove());
+  } catch {
+    // ignore
+  }
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) void killActiveResources("visibilitychange");
+});
+window.addEventListener("pagehide", () => void killActiveResources("pagehide"));
+
 function setInstallButtonVisible(visible) {
   if (!btnInstall) return;
   btnInstall.classList.toggle("hidden", !visible);
@@ -471,13 +518,16 @@ async function openScannerBarcodeDetector() {
 
   let stream = null;
   let stopped = false;
+  let unregisterCleanup = null;
 
   const stop = () => {
     stopped = true;
     if (stream) stream.getTracks().forEach((t) => t.stop());
     overlay.remove();
+    if (unregisterCleanup) unregisterCleanup();
   };
 
+  unregisterCleanup = registerCleanup(() => stop());
   btnClose.addEventListener("click", () => stop());
 
   try {
@@ -679,6 +729,7 @@ async function openScannerHtml5Qrcode() {
   const btnClose = overlay.querySelector("#scannerClose");
   let stopped = false;
   let finalize = null;
+  let unregisterCleanup = null;
 
   const mapFormat = (decodedResult) => {
     const name =
@@ -737,8 +788,10 @@ async function openScannerHtml5Qrcode() {
       // ignore
     }
     overlay.remove();
+    if (unregisterCleanup) unregisterCleanup();
   };
 
+  unregisterCleanup = registerCleanup(() => stop());
   btnClose.addEventListener("click", () => (finalize ? void finalize(null) : void stop()));
 
   const config = {
