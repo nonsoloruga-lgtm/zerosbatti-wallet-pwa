@@ -96,6 +96,46 @@ function normalize(s) {
   return (s || "").toLowerCase().trim();
 }
 
+function hashString(s) {
+  const str = String(s || "");
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function cardTheme(key) {
+  const palettes = [
+    [174, 214], // mint -> sky
+    [196, 268], // mint -> lilac
+    [18, 334], // peach -> pink
+    [42, 194], // butter -> aqua
+    [222, 282], // periwinkle -> lavender
+    [155, 300], // seafoam -> orchid
+    [30, 240] // sand -> blue
+  ];
+  const idx = hashString(key) % palettes.length;
+  const [h1, h2] = palettes[idx];
+  return {
+    bg: `linear-gradient(135deg, hsl(${h1}, 70%, 86%), hsl(${h2}, 70%, 88%))`,
+    bg2: `radial-gradient(160px 120px at 25% 25%, rgba(255,255,255,0.40), rgba(255,255,255,0) 60%),
+          radial-gradient(180px 130px at 75% 75%, rgba(255,255,255,0.35), rgba(255,255,255,0) 60%)`
+  };
+}
+
+function initialsFromName(name) {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "";
+  const first = parts[0][0] || "";
+  const second = (parts[1]?.[0] || parts[0]?.[1] || "").trim();
+  return (first + second).toUpperCase();
+}
+
 function renderCards() {
   const q = normalize(searchInput.value);
   const filtered = q ? allCards.filter((c) => normalize(c.name).includes(q)) : allCards;
@@ -104,19 +144,39 @@ function renderCards() {
   cardsList.innerHTML = "";
 
   for (const card of filtered) {
+    const name = String(card.name || "").trim() || "Tessera";
     const el = document.createElement("div");
     el.className = "carditem";
     el.innerHTML = `
       <div class="carditem__grid">
-        <img class="carditem__img" alt="" />
+        <div class="carditem__media"></div>
         <div class="carditem__name">
           <div class="carditem__nameText"></div>
         </div>
       </div>
     `;
-    const img = el.querySelector(".carditem__img");
-    img.src = card.logoImage || card.frontImage || "./icons/icon-192.png";
-    const name = String(card.name || "").trim() || "Tessera";
+    const media = el.querySelector(".carditem__media");
+    const imgSrc = card.logoImage || card.frontImage || "";
+    if (imgSrc) {
+      const img = document.createElement("img");
+      img.className = "carditem__img";
+      img.alt = "";
+      img.src = imgSrc;
+      media.appendChild(img);
+    } else {
+      const ph = document.createElement("div");
+      ph.className = "carditem__ph";
+      const th = cardTheme(card.id || name);
+      ph.style.backgroundImage = `${th.bg2}, ${th.bg}`;
+      ph.innerHTML = `
+        <div class="carditem__phInit"></div>
+        <div class="carditem__phName"></div>
+      `;
+      ph.querySelector(".carditem__phInit").textContent = initialsFromName(name);
+      ph.querySelector(".carditem__phName").textContent = name;
+      media.appendChild(ph);
+    }
+
     el.querySelector(".carditem__nameText").textContent = name;
     el.addEventListener("click", () => openCard(card.id));
     cardsList.appendChild(el);
@@ -523,9 +583,21 @@ async function openEditor(state) {
           <button class="btn" id="btnSetLogo">Logo</button>
           <button class="btn" id="btnSetFront">Fronte</button>
         </div>
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:10px;">
-          <img id="pvLogo" style="width:100%; height:90px; object-fit:contain; background:#fff; border-radius:12px; border:1px solid var(--stroke);" />
-          <img id="pvFront" style="width:100%; height:90px; object-fit:contain; background:#fff; border-radius:12px; border:1px solid var(--stroke);" />
+        <div class="pvrow" style="margin-top:10px;">
+          <div class="pv" id="pvLogoWrap">
+            <img id="pvLogoImg" class="pv__img" alt="" />
+            <div class="pv__ph">
+              <div class="pv__init" id="pvLogoInit"></div>
+              <div class="pv__name" id="pvLogoName"></div>
+            </div>
+          </div>
+          <div class="pv" id="pvFrontWrap">
+            <img id="pvFrontImg" class="pv__img" alt="" />
+            <div class="pv__ph">
+              <div class="pv__init" id="pvFrontInit"></div>
+              <div class="pv__name" id="pvFrontName"></div>
+            </div>
+          </div>
         </div>
 
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:14px;">
@@ -540,15 +612,56 @@ async function openEditor(state) {
   const edName = backdrop.querySelector("#edName");
   const edCode = backdrop.querySelector("#edCode");
   const edFormat = backdrop.querySelector("#edFormat");
-  const pvLogo = backdrop.querySelector("#pvLogo");
-  const pvFront = backdrop.querySelector("#pvFront");
+  const pvLogoWrap = backdrop.querySelector("#pvLogoWrap");
+  const pvLogoImg = backdrop.querySelector("#pvLogoImg");
+  const pvLogoInit = backdrop.querySelector("#pvLogoInit");
+  const pvLogoName = backdrop.querySelector("#pvLogoName");
+  const pvFrontWrap = backdrop.querySelector("#pvFrontWrap");
+  const pvFrontImg = backdrop.querySelector("#pvFrontImg");
+  const pvFrontInit = backdrop.querySelector("#pvFrontInit");
+  const pvFrontName = backdrop.querySelector("#pvFrontName");
 
   edName.value = state.name || "";
   edCode.value = state.code || "";
   edFormat.value = state.format || "code128";
 
-  pvLogo.src = state.logoImage || "./icons/icon-192.png";
-  pvFront.src = state.frontImage || "./icons/icon-192.png";
+  const renderPv = ({ wrap, imgEl, initEl, nameEl, imageData, key, name }) => {
+    const label = String(name || "").trim() || "Tessera";
+    const th = cardTheme(key || label);
+    wrap.style.backgroundImage = `${th.bg2}, ${th.bg}`;
+    initEl.textContent = initialsFromName(label);
+    nameEl.textContent = label;
+    if (imageData) {
+      imgEl.src = imageData;
+      wrap.classList.add("pv--hasimg");
+    } else {
+      imgEl.removeAttribute("src");
+      wrap.classList.remove("pv--hasimg");
+    }
+  };
+
+  const refreshPvs = () => {
+    renderPv({
+      wrap: pvLogoWrap,
+      imgEl: pvLogoImg,
+      initEl: pvLogoInit,
+      nameEl: pvLogoName,
+      imageData: state.logoImage,
+      key: state.id + "_logo",
+      name: edName.value
+    });
+    renderPv({
+      wrap: pvFrontWrap,
+      imgEl: pvFrontImg,
+      initEl: pvFrontInit,
+      nameEl: pvFrontName,
+      imageData: state.frontImage,
+      key: state.id + "_front",
+      name: edName.value
+    });
+  };
+  refreshPvs();
+  edName.addEventListener("input", () => refreshPvs());
 
   const pickImage = async ({ aspect, outputWidth, outputHeight, title }) => {
     const input = document.createElement("input");
@@ -566,14 +679,14 @@ async function openEditor(state) {
     const cropped = await pickImage({ aspect: 1, outputWidth: 512, outputHeight: 512, title: "Ritaglia logo" });
     if (cropped) {
       state.logoImage = cropped;
-      pvLogo.src = state.logoImage || "./icons/icon-192.png";
+      refreshPvs();
     }
   };
   backdrop.querySelector("#btnSetFront").onclick = async () => {
     const cropped = await pickImage({ aspect: 16 / 9, outputWidth: 960, outputHeight: 540, title: "Ritaglia foto" });
     if (cropped) {
       state.frontImage = cropped;
-      pvFront.src = state.frontImage || "./icons/icon-192.png";
+      refreshPvs();
     }
   };
 
