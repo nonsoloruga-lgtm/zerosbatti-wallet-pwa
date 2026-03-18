@@ -1,5 +1,5 @@
 /* Basic offline-first cache for the PWA. */
-const CACHE_NAME = "zerosbatti-cache-v7";
+const CACHE_NAME = "zerosbatti-cache-v8";
 const CORE_ASSETS = [
   "./",
   "./index.html",
