@@ -257,22 +257,45 @@ async function openManageSheet({ mode, card }) {
 fabAdd.addEventListener("click", () => openManageSheet({ mode: "new", card: null }));
 
 async function detectFromImageFile(file) {
-  if (!("BarcodeDetector" in window)) return null;
-  const bitmap = await createImageBitmap(file);
-  const formats = ["qr_code", "code_128", "ean_13", "ean_8", "upc_a", "upc_e", "code_39"];
-  // eslint-disable-next-line no-undef
-  const detector = new BarcodeDetector({ formats });
-  const results = await detector.detect(bitmap);
-  const hit = results?.[0];
-  return hit ? { code: hit.rawValue || "", format: hit.format || "" } : null;
-}
-
-async function openScanner() {
-  if (!("BarcodeDetector" in window)) {
-    alert("Scanner non supportato su questo browser. Usa Chrome su Android.");
-    return null;
+  // Preferred path: native BarcodeDetector (Chrome/Android).
+  if ("BarcodeDetector" in window) {
+    const bitmap = await createImageBitmap(file);
+    const formats = ["qr_code", "code_128", "ean_13", "ean_8", "upc_a", "upc_e", "code_39"];
+    // eslint-disable-next-line no-undef
+    const detector = new BarcodeDetector({ formats });
+    const results = await detector.detect(bitmap);
+    const hit = results?.[0];
+    return hit ? { code: hit.rawValue || "", format: hit.format || "" } : null;
   }
 
+  // Fallback for iOS Safari: html5-qrcode (format may be unknown for still images).
+  if (typeof window.Html5Qrcode !== "undefined") {
+    const id = `scanfile_${Date.now()}`;
+    const host = document.createElement("div");
+    host.id = id;
+    host.style.display = "none";
+    document.body.appendChild(host);
+    // eslint-disable-next-line no-undef
+    const scanner = new Html5Qrcode(id);
+    try {
+      const decodedText = await scanner.scanFile(file, true);
+      return decodedText ? { code: String(decodedText), format: "" } : null;
+    } catch {
+      return null;
+    } finally {
+      try {
+        await scanner.clear();
+      } catch {
+        // ignore
+      }
+      host.remove();
+    }
+  }
+
+  return null;
+}
+
+async function openScannerBarcodeDetector() {
   const overlay = document.createElement("div");
   overlay.className = "scanner";
   overlay.innerHTML = `
@@ -337,6 +360,93 @@ async function openScanner() {
   };
 
   return tick();
+}
+
+async function openScannerHtml5Qrcode() {
+  const overlay = document.createElement("div");
+  overlay.className = "scanner";
+  overlay.innerHTML = `
+    <div class="scanner__top">
+      <div>Scansiona codice</div>
+      <button class="btn" id="scannerClose">Chiudi</button>
+    </div>
+    <div id="scannerReader" class="scanner__video"></div>
+    <div class="scanner__hint">Inquadra barcode o QR. La scansione è automatica.</div>
+  `;
+  document.body.appendChild(overlay);
+
+  const btnClose = overlay.querySelector("#scannerClose");
+  let stopped = false;
+
+  const mapFormat = (decodedResult) => {
+    const name =
+      decodedResult?.result?.format?.formatName ||
+      decodedResult?.result?.format?.format ||
+      decodedResult?.result?.format ||
+      decodedResult?.format?.formatName ||
+      "";
+    const s = String(name).toLowerCase();
+    return s.includes("qr") ? "qr_code" : "code_128";
+  };
+
+  // eslint-disable-next-line no-undef
+  const scanner = new Html5Qrcode("scannerReader");
+
+  const stop = async () => {
+    if (stopped) return;
+    stopped = true;
+    try {
+      await scanner.stop();
+    } catch {
+      // ignore
+    }
+    try {
+      await scanner.clear();
+    } catch {
+      // ignore
+    }
+    overlay.remove();
+  };
+
+  btnClose.addEventListener("click", () => void stop());
+
+  const config = {
+    fps: 10,
+    // Comfortable scan window; works in portrait and landscape.
+    qrbox: (vw, vh) => {
+      const size = Math.floor(Math.min(vw, vh) * 0.72);
+      return { width: size, height: size };
+    }
+  };
+
+  return new Promise((resolve) => {
+    scanner
+      .start(
+        { facingMode: "environment" },
+        config,
+        async (decodedText, decodedResult) => {
+          if (!decodedText) return;
+          const out = { code: String(decodedText), format: mapFormat(decodedResult) };
+          resolve(out);
+          await stop();
+        },
+        () => {}
+      )
+      .catch(async () => {
+        await stop();
+        alert("Permesso fotocamera negato o non disponibile.");
+        resolve(null);
+      });
+  });
+}
+
+async function openScanner() {
+  // Chrome/Android
+  if ("BarcodeDetector" in window) return openScannerBarcodeDetector();
+  // iOS Safari fallback
+  if (typeof window.Html5Qrcode !== "undefined") return openScannerHtml5Qrcode();
+  alert("Scanner non supportato su questo browser.");
+  return null;
 }
 
 async function openManageFlow({ action, mode, card }) {

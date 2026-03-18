@@ -1,10 +1,12 @@
 /* Basic offline-first cache for the PWA. */
-const CACHE_NAME = "zerosbatti-cache-v1";
+const CACHE_NAME = "zerosbatti-cache-v2";
 const CORE_ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./db.js",
+  "./vendor/html5-qrcode.min.js",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
@@ -55,4 +57,3 @@ self.addEventListener("fetch", (event) => {
     })()
   );
 });
-
