@@ -198,6 +198,15 @@ body {
   backdrop-filter: blur(10px);
 }
 
+/* iOS PWAs can heat up with heavy blur effects (GPU). Prefer a solid bar. */
+@supports (-webkit-touch-callout: none) {
+  .tabbar {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(243, 235, 221, 0.98);
+  }
+}
+
 .tab {
   border: 0;
   background: transparent;
