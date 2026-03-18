@@ -388,13 +388,29 @@ async function openScannerBarcodeDetector() {
   btnClose.addEventListener("click", () => stop());
 
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: "environment",
+        frameRate: { ideal: 30, max: 30 }
+      },
+      audio: false
+    });
     video.srcObject = stream;
     await video.play();
   } catch (e) {
     stop();
     alert("Permesso fotocamera negato o non disponibile.");
     return null;
+  }
+
+  try {
+    const track = stream.getVideoTracks?.()[0] || null;
+    if (track) {
+      const opt = await optimizeVideoTrack(track, { fps: 30, zoom: 1.2, focusMode: "continuous" });
+      if (!opt.zoomApplied) applyVideoCssZoom(video, 1.2);
+    }
+  } catch {
+    // ignore
   }
 
   const formats = ["qr_code", "code_128", "ean_13", "ean_8", "upc_a", "upc_e", "code_39"];
@@ -425,6 +441,81 @@ async function openScannerBarcodeDetector() {
   };
 
   return tick();
+}
+
+function applyVideoCssZoom(videoEl, scale) {
+  if (!videoEl) return;
+  const s = Number(scale) || 1;
+  if (s <= 1) return;
+  videoEl.style.transform = `scale(${s})`;
+  videoEl.style.transformOrigin = "center center";
+}
+
+async function waitForSelector(rootEl, selector, timeoutMs = 2500) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const found = rootEl.querySelector(selector);
+    if (found) return found;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return null;
+}
+
+function clamp01(n, min, max) {
+  return Math.max(min, Math.min(max, n));
+}
+
+async function optimizeVideoTrack(track, { fps = 30, zoom = 1.2, focusMode = "continuous" } = {}) {
+  const result = { focusApplied: false, zoomApplied: false, fpsApplied: false };
+  if (!track || typeof track.applyConstraints !== "function") return result;
+
+  const caps = typeof track.getCapabilities === "function" ? track.getCapabilities() : {};
+  const adv = [];
+
+  if (caps && caps.focusMode && Array.isArray(caps.focusMode) && caps.focusMode.includes(focusMode)) {
+    adv.push({ focusMode });
+  }
+
+  if (caps && typeof caps.zoom === "object" && typeof zoom === "number") {
+    const z = clamp01(zoom, caps.zoom.min ?? 1, caps.zoom.max ?? zoom);
+    adv.push({ zoom: z });
+  }
+
+  const constraints = {};
+  if (caps && caps.frameRate && typeof fps === "number") {
+    constraints.frameRate = { ideal: fps, max: fps };
+  } else if (typeof fps === "number") {
+    constraints.frameRate = { ideal: fps, max: fps };
+  }
+  if (adv.length) constraints.advanced = adv;
+
+  try {
+    await track.applyConstraints(constraints);
+  } catch {
+    // Fallback: try only what we can, step-by-step.
+    try {
+      await track.applyConstraints({ frameRate: { ideal: fps, max: fps } });
+    } catch {
+      // ignore
+    }
+    try {
+      await track.applyConstraints({ advanced: [{ focusMode }] });
+    } catch {
+      // ignore
+    }
+    try {
+      await track.applyConstraints({ advanced: [{ zoom }] });
+    } catch {
+      // ignore
+    }
+  }
+
+  // Re-read settings when possible.
+  const settings = typeof track.getSettings === "function" ? track.getSettings() : {};
+  result.fpsApplied = typeof settings.frameRate === "number" ? settings.frameRate <= fps + 0.5 : !!constraints.frameRate;
+  result.zoomApplied = typeof settings.zoom === "number" ? settings.zoom >= 1.01 : adv.some((a) => "zoom" in a);
+  result.focusApplied = typeof settings.focusMode === "string" ? settings.focusMode === focusMode : adv.some((a) => "focusMode" in a);
+  return result;
 }
 
 async function openScannerHtml5Qrcode() {
@@ -502,6 +593,25 @@ async function openScannerHtml5Qrcode() {
         alert("Permesso fotocamera negato o non disponibile.");
         resolve(null);
       });
+
+    // Best-effort iOS tuning: once the internal <video> appears, apply track constraints + slight zoom.
+    (async () => {
+      try {
+        const host = overlay.querySelector("#scannerReader");
+        const vid = await waitForSelector(host, "video", 3500);
+        if (!vid) return;
+        const s = vid.srcObject;
+        const track = s?.getVideoTracks?.()[0] || null;
+        if (track) {
+          const opt = await optimizeVideoTrack(track, { fps: 30, zoom: 1.2, focusMode: "continuous" });
+          if (!opt.zoomApplied) applyVideoCssZoom(vid, 1.2);
+        } else {
+          applyVideoCssZoom(vid, 1.2);
+        }
+      } catch {
+        // ignore
+      }
+    })();
   });
 }
 
