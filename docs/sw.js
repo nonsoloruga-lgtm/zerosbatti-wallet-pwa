@@ -1,5 +1,5 @@
 /* Basic offline-first cache for the PWA. */
-const CACHE_NAME = "zerosbatti-cache-v33";
+const CACHE_NAME = "zerosbatti-cache-v34";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -8,7 +8,7 @@ const CORE_ASSETS = [
   "./app.js",
   "./db.js",
   "./vendor/html5-qrcode.min.js",
-  "./vendor/zxing.min.js",
+  "./vendor/zxing-browser.min.js",
   "./vendor/cropper.min.js",
   "./manifest.webmanifest",
   "./icons/icon-192.png",

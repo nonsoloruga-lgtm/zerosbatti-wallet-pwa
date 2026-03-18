@@ -470,27 +470,34 @@ async function detectFromImageFile(file) {
 
   const normalized = await normalizeImageFileForDecode(file);
 
-  // Prefer ZXing for still images (generally more reliable across iOS/Android for photos).
-  if (typeof window.ZXing !== "undefined") {
+  // Prefer ZXingBrowser via canvas decode for still images (more robust on iOS).
+  if (typeof window.ZXingBrowser !== "undefined") {
     const url = URL.createObjectURL(normalized);
     // eslint-disable-next-line no-undef
-    const reader = new ZXing.BrowserMultiFormatReader();
+    const reader = new ZXingBrowser.BrowserMultiFormatReader();
     try {
       const img = new Image();
       img.decoding = "async";
       img.src = url;
-      if (typeof img.decode === "function") {
-        await img.decode();
-      } else {
-        await new Promise((resolve, reject) => {
-          img.onload = () => resolve();
-          img.onerror = () => reject(new Error("img_load_failed"));
-        });
-      }
-      const result = await reader.decodeFromImageElement(img);
+      await new Promise((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("img_load_failed"));
+      });
+
+      const canvas = document.createElement("canvas");
+      const w = img.naturalWidth || img.width;
+      const h = img.naturalHeight || img.height;
+      const max = 1400;
+      const scale = Math.min(1, max / Math.max(w, h));
+      canvas.width = Math.max(1, Math.round(w * scale));
+      canvas.height = Math.max(1, Math.round(h * scale));
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      const result = await reader.decodeFromCanvas(canvas);
       const text = result?.getText ? result.getText() : result?.text || "";
       const fmt = result?.getBarcodeFormat ? result.getBarcodeFormat() : null;
-      const format = fmt === (window.ZXing?.BarcodeFormat?.QR_CODE ?? -1) ? "qr_code" : "";
+      const format = String(fmt || "").toLowerCase().includes("qr") ? "qr_code" : "";
       return text ? { code: String(text), format } : null;
     } catch {
       return null;
@@ -674,6 +681,123 @@ async function openScannerBarcodeDetector() {
       }
     }
     return new Promise((r) => setTimeout(r, 120)).then(tick);
+  };
+
+  return tick();
+}
+
+async function openScannerZXingCanvasLoop() {
+  // iOS-friendly live scanner: draw video frames to canvas and decode with ZXingBrowser
+  // at a throttled interval (avoids html5-qrcode state machine issues on some iOS builds).
+  // eslint-disable-next-line no-undef
+  if (typeof ZXingBrowser === "undefined") return null;
+
+  const overlay = document.createElement("div");
+  overlay.className = "scanner";
+  overlay.innerHTML = `
+    <div class="scanner__top">
+      <div>Scansiona codice</div>
+      <button class="btn" id="scannerClose">Chiudi</button>
+    </div>
+    <video class="scanner__video" autoplay muted playsinline></video>
+    <div class="scanner__hint">Inquadra barcode o QR. La scansione è automatica.</div>
+  `;
+  document.body.appendChild(overlay);
+
+  const video = overlay.querySelector("video");
+  const btnClose = overlay.querySelector("#scannerClose");
+
+  let stream = null;
+  let stopped = false;
+  let unregisterCleanup = null;
+  // eslint-disable-next-line no-undef
+  const reader = new ZXingBrowser.BrowserMultiFormatReader();
+
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    try {
+      reader.reset?.();
+    } catch {
+      // ignore
+    }
+    if (stream) {
+      try {
+        stream.getTracks().forEach((t) => t.stop());
+      } catch {
+        // ignore
+      }
+    }
+    try {
+      video.srcObject = null;
+    } catch {
+      // ignore
+    }
+    overlay.remove();
+    if (unregisterCleanup) unregisterCleanup();
+  };
+
+  unregisterCleanup = registerCleanup(() => stop());
+  btnClose.addEventListener("click", () => stop());
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        frameRate: { ideal: 30, max: 30 }
+      },
+      audio: false
+    });
+    video.srcObject = stream;
+    try {
+      await video.play();
+    } catch {
+      // ignore
+    }
+    markCameraPermissionGranted();
+  } catch (e) {
+    stop();
+    showCameraStartError(e, { where: "openScannerZXingCanvasLoop.getUserMedia" });
+    return null;
+  }
+
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const startedAt = Date.now();
+
+  const tick = async () => {
+    if (stopped) return null;
+    if (Date.now() - startedAt > 20000) {
+      stop();
+      return null;
+    }
+    if (video.readyState >= 2) {
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      if (vw && vh) {
+        const maxW = 720;
+        const scale = Math.min(1, maxW / vw);
+        canvas.width = Math.max(1, Math.round(vw * scale));
+        canvas.height = Math.max(1, Math.round(vh * scale));
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        try {
+          const result = await reader.decodeFromCanvas(canvas);
+          const text = result?.getText ? result.getText() : result?.text || "";
+          const fmt = result?.getBarcodeFormat ? result.getBarcodeFormat() : "";
+          if (text) {
+            const out = { code: String(text), format: String(fmt).toLowerCase().includes("qr") ? "qr_code" : "" };
+            stop();
+            return out;
+          }
+        } catch {
+          // Not found / decode error -> continue
+        }
+      }
+    }
+    await new Promise((r) => setTimeout(r, 250));
+    return tick();
   };
 
   return tick();
@@ -996,6 +1120,7 @@ function isIOS() {
 async function openScanner() {
   // iOS: prefer html5-qrcode for reliability and lower CPU usage.
   if (isIOS()) {
+    if (typeof window.ZXingBrowser !== "undefined") return openScannerZXingCanvasLoop();
     if (typeof window.Html5Qrcode !== "undefined") return openScannerHtml5Qrcode();
     if ("BarcodeDetector" in window) return openScannerBarcodeDetector();
   }
