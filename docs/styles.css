@@ -480,6 +480,66 @@ body {
   gap: 10px;
 }
 
+.cropjs-backdrop {
+  position: fixed;
+  inset: 0;
+  background: #0b0f16;
+  z-index: 80;
+}
+.cropjs {
+  height: 100%;
+  display: grid;
+  grid-template-rows: 56px 1fr 56px 74px;
+}
+.cropjs__top {
+  display: grid;
+  grid-template-columns: 56px 1fr 56px;
+  align-items: center;
+  color: #fff;
+  padding: 0 6px;
+}
+.cropjs__title { font-weight: 900; text-align: center; }
+.cropjs__icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
+  border: 0;
+  background: rgba(255,255,255,0.10);
+  color: #fff;
+  font-size: 18px;
+}
+.cropjs__stage {
+  position: relative;
+  background: #0b0f16;
+  overflow: hidden;
+}
+.cropjs__stage img {
+  display: block;
+  max-width: 100%;
+}
+.cropjs__bar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+}
+.cropjs__btn {
+  border: 0;
+  border-radius: 14px;
+  padding: 10px 12px;
+  font-weight: 900;
+  background: rgba(255,255,255,0.10);
+  color: #fff;
+}
+.cropjs__footer {
+  padding: 12px 14px 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  background: linear-gradient(180deg, rgba(11,15,22,0), rgba(11,15,22,0.98) 42%);
+}
+
 .scanner {
   position: fixed;
   inset: 0;

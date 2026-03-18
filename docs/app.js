@@ -966,7 +966,7 @@ async function openEditor(state) {
     }
   };
   backdrop.querySelector("#pickBack").onclick = async () => {
-    const cropped = await pickImage({ presetAspect: "16:9", outputMax: 1200, title: "Ritaglia retro" });
+    const cropped = await pickImage({ presetAspect: "85:55", outputMax: 1200, title: "Ritaglia retro" });
     if (cropped) {
       state.backImage = cropped;
       refreshPvs();
@@ -1018,329 +1018,109 @@ function clamp(n, a, b) {
 }
 
 async function openCropper({ dataUrl, outputMax = 1200, title = "Ritaglia", mime = "image/jpeg", presetAspect = "free" }) {
-  let working = await loadImage(dataUrl);
-  let aspectMode = presetAspect; // "free" | "square" | "16:9"
+  // Cropper.js integration (with EXIF orientation fix for iOS).
+  // eslint-disable-next-line no-undef
+  if (typeof Cropper === "undefined") {
+    alert("Editor ritaglio non disponibile (Cropper.js non caricato).");
+    return null;
+  }
+
+  const aspectRatio = (() => {
+    if (presetAspect === "square") return 1;
+    if (presetAspect === "85:55") return 85 / 55;
+    if (presetAspect === "16:9") return 16 / 9;
+    return NaN; // free
+  })();
 
   const backdrop = document.createElement("div");
-  backdrop.className = "cropper-backdrop";
+  backdrop.className = "cropjs-backdrop";
   backdrop.innerHTML = `
-    <div class="cropper">
-      <div class="cropper__header">
-        <div class="cropper__title"></div>
+    <div class="cropjs">
+      <div class="cropjs__top">
+        <button class="cropjs__icon" id="cjClose" type="button">←</button>
+        <div class="cropjs__title"></div>
+        <div class="cropjs__spacer"></div>
       </div>
-      <div class="cropper__tools">
-        <button class="cropper__toolbtn" id="cropRotateLeft" type="button">⟲</button>
-        <button class="cropper__toolbtn" id="cropRotateRight" type="button">⟳</button>
-        <select class="cropper__select" id="cropAspect">
-          <option value="free">Libero</option>
-          <option value="square">Quadrato</option>
-          <option value="16:9">16:9</option>
-        </select>
+
+      <div class="cropjs__stage">
+        <img id="cjImg" alt="" />
       </div>
-      <div class="cropper__body">
-        <div class="cropper__viewport">
-          <img class="cropper__img" alt="" />
-          <div class="cropper__crop" id="cropBox">
-            <div class="cropper__handle cropper__handle--tl" data-h="tl"></div>
-            <div class="cropper__handle cropper__handle--tr" data-h="tr"></div>
-            <div class="cropper__handle cropper__handle--bl" data-h="bl"></div>
-            <div class="cropper__handle cropper__handle--br" data-h="br"></div>
-          </div>
-        </div>
-        <div class="cropper__hint">Trascina per spostare • Ridimensiona gli angoli • Ruota se serve</div>
-        <input class="cropper__zoom" type="range" min="1" max="3" step="0.01" value="1" />
+
+      <div class="cropjs__bar">
+        <button class="cropjs__btn" id="cjRotateLeft" type="button">⟲</button>
+        <button class="cropjs__btn" id="cjRotateRight" type="button">⟳</button>
+        <button class="cropjs__btn" id="cjReset" type="button">Reset</button>
       </div>
-      <div class="cropper__footer">
-        <button class="btn" id="cropCancel">Annulla</button>
-        <button class="btn btn--cta" id="cropOk">Usa</button>
+
+      <div class="cropjs__footer">
+        <button class="btn" id="cjCancel" type="button">Annulla</button>
+        <button class="btn btn--cta" id="cjOk" type="button">Conferma</button>
       </div>
     </div>
   `;
   document.body.appendChild(backdrop);
 
-  const viewport = backdrop.querySelector(".cropper__viewport");
-  const imgEl = backdrop.querySelector(".cropper__img");
-  const zoomEl = backdrop.querySelector(".cropper__zoom");
-  const titleEl = backdrop.querySelector(".cropper__title");
-  const cropBox = backdrop.querySelector("#cropBox");
-  const aspectSel = backdrop.querySelector("#cropAspect");
+  const titleEl = backdrop.querySelector(".cropjs__title");
   titleEl.textContent = title;
+
+  const imgEl = backdrop.querySelector("#cjImg");
   imgEl.src = dataUrl;
-  aspectSel.value = aspectMode;
 
-  await new Promise((r) => requestAnimationFrame(r));
-  const vb = viewport.getBoundingClientRect();
-  const vw = vb.width;
-  const vh = vb.height;
-
-  const coverScale = () => Math.max(vw / working.naturalWidth, vh / working.naturalHeight);
-  let scale = coverScale();
-  let x = (vw - working.naturalWidth * scale) / 2;
-  let y = (vh - working.naturalHeight * scale) / 2;
-
-  const aspectValue = () => {
-    if (aspectMode === "square") return 1;
-    if (aspectMode === "16:9") return 16 / 9;
-    return 0;
-  };
-
-  let crop = { x: vw * 0.07, y: vh * 0.14, w: vw * 0.86, h: vh * 0.72 };
-  const normalizeCrop = () => {
-    const a = aspectValue();
-    if (a) {
-      // Keep within viewport while enforcing aspect.
-      const maxW = vw * 0.92;
-      const maxH = vh * 0.78;
-      let w = maxW;
-      let h = w / a;
-      if (h > maxH) {
-        h = maxH;
-        w = h * a;
-      }
-      crop.w = w;
-      crop.h = h;
-      crop.x = (vw - w) / 2;
-      crop.y = (vh - h) / 2;
-    } else {
-      crop = { x: vw * 0.07, y: vh * 0.14, w: vw * 0.86, h: vh * 0.72 };
-    }
-  };
-  normalizeCrop();
-
-  const apply = () => {
-    const rw = working.naturalWidth * scale;
-    const rh = working.naturalHeight * scale;
-    x = clamp(x, vw - rw, 0);
-    y = clamp(y, vh - rh, 0);
-    imgEl.style.width = `${rw}px`;
-    imgEl.style.height = `${rh}px`;
-    imgEl.style.transform = `translate(${x}px, ${y}px)`;
-  };
-  const applyCrop = () => {
-    crop.x = clamp(crop.x, 0, vw - crop.w);
-    crop.y = clamp(crop.y, 0, vh - crop.h);
-    crop.w = clamp(crop.w, 60, vw - crop.x);
-    crop.h = clamp(crop.h, 60, vh - crop.y);
-    cropBox.style.left = `${crop.x}px`;
-    cropBox.style.top = `${crop.y}px`;
-    cropBox.style.width = `${crop.w}px`;
-    cropBox.style.height = `${crop.h}px`;
-  };
-  apply();
-  applyCrop();
-
-  const zoomTo = (factor) => {
-    const newScale = coverScale() * factor;
-    const fx = crop.x + crop.w / 2;
-    const fy = crop.y + crop.h / 2;
-    const cx = (fx - x) / scale;
-    const cy = (fy - y) / scale;
-    scale = newScale;
-    x = fx - cx * scale;
-    y = fy - cy * scale;
-    apply();
-  };
-  zoomEl.addEventListener("input", () => zoomTo(Number(zoomEl.value)));
-
-  const hitTestCrop = (clientX, clientY) => {
-    const rx = clientX - vb.left;
-    const ry = clientY - vb.top;
-    if (rx >= crop.x && rx <= crop.x + crop.w && ry >= crop.y && ry <= crop.y + crop.h) return { rx, ry, inside: true };
-    return { rx, ry, inside: false };
-  };
-
-  let mode = null; // "pan" | "moveCrop" | "resizeCrop"
-  let handle = "";
-  let startX = 0;
-  let startY = 0;
-  let baseX = 0;
-  let baseY = 0;
-  let baseCrop = null;
-
-  cropBox.addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    const t = e.target;
-    const h = t?.getAttribute?.("data-h") || "";
-    mode = h ? "resizeCrop" : "moveCrop";
-    handle = h;
-    cropBox.setPointerCapture(e.pointerId);
-    startX = e.clientX;
-    startY = e.clientY;
-    baseCrop = { ...crop };
+  // eslint-disable-next-line no-undef
+  const cropper = new Cropper(imgEl, {
+    aspectRatio,
+    viewMode: 1,
+    dragMode: "move",
+    autoCropArea: 0.92,
+    responsive: true,
+    background: false,
+    guides: true,
+    center: true,
+    highlight: true,
+    checkOrientation: true,
+    zoomOnTouch: true,
+    zoomOnWheel: false,
+    movable: true,
+    rotatable: true,
+    scalable: false
   });
 
-  cropBox.addEventListener("pointermove", (e) => {
-    if (!mode) return;
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
-    const a = aspectValue();
-
-    if (mode === "moveCrop") {
-      crop.x = baseCrop.x + dx;
-      crop.y = baseCrop.y + dy;
-      applyCrop();
-      return;
+  const cleanup = () => {
+    try {
+      cropper.destroy();
+    } catch {
+      // ignore
     }
-
-    if (mode === "resizeCrop") {
-      let nx = baseCrop.x;
-      let ny = baseCrop.y;
-      let nw = baseCrop.w;
-      let nh = baseCrop.h;
-
-      if (handle.includes("r")) nw = baseCrop.w + dx;
-      if (handle.includes("l")) {
-        nw = baseCrop.w - dx;
-        nx = baseCrop.x + dx;
-      }
-      if (handle.includes("b")) nh = baseCrop.h + dy;
-      if (handle.includes("t")) {
-        nh = baseCrop.h - dy;
-        ny = baseCrop.y + dy;
-      }
-
-      const min = 70;
-      nw = Math.max(min, nw);
-      nh = Math.max(min, nh);
-
-      if (a) {
-        // lock ratio using dominant change
-        const want = nw / nh;
-        if (want > a) {
-          nw = nh * a;
-          if (handle.includes("l")) nx = baseCrop.x + (baseCrop.w - nw);
-        } else {
-          nh = nw / a;
-          if (handle.includes("t")) ny = baseCrop.y + (baseCrop.h - nh);
-        }
-      }
-
-      crop = { x: nx, y: ny, w: nw, h: nh };
-      applyCrop();
-    }
-  });
-
-  const endCropDrag = () => {
-    mode = null;
-    handle = "";
-    baseCrop = null;
-  };
-  cropBox.addEventListener("pointerup", endCropDrag);
-  cropBox.addEventListener("pointercancel", endCropDrag);
-
-  viewport.addEventListener("pointerdown", (e) => {
-    const hit = hitTestCrop(e.clientX, e.clientY);
-    if (hit.inside) return;
-    mode = "pan";
-    viewport.setPointerCapture(e.pointerId);
-    startX = e.clientX;
-    startY = e.clientY;
-    baseX = x;
-    baseY = y;
-  });
-  viewport.addEventListener("pointermove", (e) => {
-    if (mode !== "pan") return;
-    x = baseX + (e.clientX - startX);
-    y = baseY + (e.clientY - startY);
-    apply();
-  });
-  viewport.addEventListener("pointerup", () => {
-    if (mode === "pan") mode = null;
-  });
-  viewport.addEventListener("pointercancel", () => {
-    if (mode === "pan") mode = null;
-  });
-
-  const rotateWorking = async (dir) => {
-    // dir: -1 or +1  (90° steps)
-    const c = document.createElement("canvas");
-    const ctx = c.getContext("2d");
-    if (!ctx) return;
-    const w = working.naturalWidth;
-    const h = working.naturalHeight;
-    c.width = h;
-    c.height = w;
-    if (dir > 0) {
-      ctx.translate(h, 0);
-      ctx.rotate(Math.PI / 2);
-    } else {
-      ctx.translate(0, w);
-      ctx.rotate(-Math.PI / 2);
-    }
-    ctx.drawImage(working, 0, 0);
-    const nextUrl = c.toDataURL("image/png");
-    working = await loadImage(nextUrl);
-    imgEl.src = nextUrl;
-    zoomEl.value = "1";
-    scale = coverScale();
-    x = (vw - working.naturalWidth * scale) / 2;
-    y = (vh - working.naturalHeight * scale) / 2;
-    normalizeCrop();
-    apply();
-    applyCrop();
+    backdrop.remove();
   };
 
-  backdrop.querySelector("#cropRotateLeft").onclick = () => void rotateWorking(-1);
-  backdrop.querySelector("#cropRotateRight").onclick = () => void rotateWorking(1);
-  aspectSel.onchange = () => {
-    aspectMode = aspectSel.value;
-    normalizeCrop();
-    applyCrop();
-  };
-
-  const exportCropped = () => {
-    const canvas = document.createElement("canvas");
-    const a = crop.w / crop.h;
-    let outW = outputMax;
-    let outH = Math.round(outputMax / a);
-    if (a < 1) {
-      outH = outputMax;
-      outW = Math.round(outputMax * a);
-    }
-    if (aspectMode === "square") {
-      outW = outputMax;
-      outH = outputMax;
-    }
-    canvas.width = outW;
-    canvas.height = outH;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-
-    if (mime !== "image/png") {
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, outW, outH);
-    }
-
-    const srcX = (crop.x - x) / scale;
-    const srcY = (crop.y - y) / scale;
-    const srcW = crop.w / scale;
-    const srcH = crop.h / scale;
-
-    // Clamp source area inside image bounds.
-    const sx = clamp(srcX, 0, Math.max(0, working.naturalWidth - 1));
-    const sy = clamp(srcY, 0, Math.max(0, working.naturalHeight - 1));
-    const sw = clamp(srcW, 1, working.naturalWidth - sx);
-    const sh = clamp(srcH, 1, working.naturalHeight - sy);
-
-    ctx.drawImage(working, sx, sy, sw, sh, 0, 0, outW, outH);
-    if (mime === "image/png") return canvas.toDataURL("image/png");
-    return canvas.toDataURL("image/jpeg", 0.88);
+  const toDataUrl = async () => {
+    const canvas = cropper.getCroppedCanvas({
+      maxWidth: outputMax,
+      maxHeight: outputMax,
+      imageSmoothingEnabled: true,
+      imageSmoothingQuality: "high",
+      fillColor: mime === "image/png" ? "transparent" : "#ffffff"
+    });
+    if (!canvas) return null;
+    const targetMime = "image/jpeg";
+    return canvas.toDataURL(targetMime, 0.8);
   };
 
   return await new Promise((resolve) => {
-    const cleanup = () => backdrop.remove();
-    backdrop.addEventListener("click", (e) => {
-      if (e.target === backdrop) {
-        cleanup();
-        resolve(null);
-      }
-    });
-    backdrop.querySelector("#cropCancel").onclick = () => {
+    backdrop.querySelector("#cjClose").onclick = () => {
       cleanup();
       resolve(null);
     };
-    backdrop.querySelector("#cropOk").onclick = () => {
-      const out = exportCropped();
+    backdrop.querySelector("#cjCancel").onclick = () => {
+      cleanup();
+      resolve(null);
+    };
+    backdrop.querySelector("#cjRotateLeft").onclick = () => cropper.rotate(-90);
+    backdrop.querySelector("#cjRotateRight").onclick = () => cropper.rotate(90);
+    backdrop.querySelector("#cjReset").onclick = () => cropper.reset();
+    backdrop.querySelector("#cjOk").onclick = async () => {
+      const out = await toDataUrl();
       cleanup();
       resolve(out);
     };
