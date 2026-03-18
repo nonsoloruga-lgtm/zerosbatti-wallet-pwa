@@ -635,7 +635,7 @@ async function openScannerBarcodeDetector() {
     markCameraPermissionGranted();
   } catch (e) {
     stop();
-    showCameraStartError(e);
+    showCameraStartError(e, { where: "openScannerBarcodeDetector.getUserMedia", constraints: { facingMode: "environment", frameRate: 30 } });
     return null;
   }
 
@@ -945,7 +945,7 @@ async function openScannerHtml5Qrcode() {
         const name = e?.name || "";
         if (name === "NotAllowedError" || name === "SecurityError") {
           await finalize(null);
-          showCameraStartError(e);
+          showCameraStartError(e, { where: "openScannerHtml5Qrcode.start", attemptIndex, constraints: attempts[attemptIndex] });
           return;
         }
         attemptIndex += 1;
@@ -955,7 +955,7 @@ async function openScannerHtml5Qrcode() {
           return;
         }
         await finalize(null);
-        showCameraStartError(e);
+        showCameraStartError(e, { where: "openScannerHtml5Qrcode.start", attemptIndex: attemptIndex - 1, constraints: attempts[attemptIndex - 1] });
       }
     };
 
@@ -1054,23 +1054,96 @@ function showCameraDeniedHelp() {
   );
 }
 
-function showCameraStartError(err) {
+function collectCameraDebugInfo(context = {}) {
+  const ua = navigator.userAgent || "";
+  const info = {
+    when: new Date().toISOString(),
+    standalone: isStandaloneDisplayMode(),
+    ios: /iphone|ipad|ipod/i.test(ua),
+    ua,
+    mediaDevices: !!navigator.mediaDevices,
+    getUserMedia: typeof navigator.mediaDevices?.getUserMedia === "function",
+    permissionsApi: !!navigator.permissions,
+    context
+  };
+  return info;
+}
+
+function showCameraErrorSheet({ message, err, context }) {
+  const debug = collectCameraDebugInfo(context);
   const name = err?.name || "";
+  const detail = {
+    ...debug,
+    error: { name, message: err?.message || String(err || "") }
+  };
+  const detailText = JSON.stringify(detail, null, 2);
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "sheet-backdrop";
+  backdrop.innerHTML = `
+    <div class="sheet">
+      <div class="sheet__title">Fotocamera</div>
+      <div class="sheet__content">
+        ${message}
+        <div style="margin-top:10px; font-size:12px; opacity:0.95;">
+          Dettagli tecnici (copiali e mandameli):
+        </div>
+        <pre style="white-space:pre-wrap; word-break:break-word; background:rgba(0,0,0,0.04); padding:10px; border-radius:12px; border:1px solid rgba(0,0,0,0.06); max-height: 220px; overflow:auto; font-size:11px;">${detailText}</pre>
+        <div style="display:flex; gap:10px; margin-top:10px;">
+          <button class="btn" id="camCopy" type="button">Copia dettagli</button>
+          <button class="btn btn--cta" id="camOk" type="button">OK</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop) backdrop.remove();
+  });
+  backdrop.querySelector("#camOk").onclick = () => backdrop.remove();
+  backdrop.querySelector("#camCopy").onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(detailText);
+      backdrop.querySelector("#camCopy").textContent = "Copiato";
+      setTimeout(() => (backdrop.querySelector("#camCopy").textContent = "Copia dettagli"), 1200);
+    } catch {
+      // Fallback: select text
+      alert("Copia non disponibile. Fai uno screenshot dei dettagli.");
+    }
+  };
+}
+
+function showCameraStartError(err, context = {}) {
+  const name = err?.name || "";
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent || "");
+  try {
+    // Always log for remote debugging via iOS Safari inspector.
+    // eslint-disable-next-line no-console
+    console.error("[camera] start error", { name, message: err?.message, context, err });
+  } catch {
+    // ignore
+  }
+
   if (name === "NotAllowedError" || name === "SecurityError") {
     showCameraDeniedHelp();
     return;
   }
   if (name === "NotFoundError" || name === "OverconstrainedError") {
-    alert("Fotocamera non trovata o non disponibile su questo dispositivo.");
+    const msg = "Fotocamera non trovata o non disponibile su questo dispositivo.";
+    if (ios) showCameraErrorSheet({ message: msg, err, context });
+    else alert(msg);
     return;
   }
   if (name === "NotReadableError" || name === "AbortError") {
-    alert(
-      "Fotocamera non avviabile.\n\nChiudi altre app che usano la fotocamera (WhatsApp/Instagram ecc.), poi riprova. Se non va, riavvia l'iPhone."
-    );
+    const msg =
+      "Fotocamera non avviabile.\n\nChiudi altre app che usano la fotocamera (WhatsApp/Instagram ecc.), poi riprova. Se non va, riavvia l'iPhone.";
+    if (ios) showCameraErrorSheet({ message: msg.replace(/\n/g, "<br/>"), err, context });
+    else alert(msg);
     return;
   }
-  alert("Fotocamera non disponibile.");
+  const msg = "Fotocamera non disponibile.";
+  if (ios) showCameraErrorSheet({ message: msg, err, context });
+  else alert(msg);
 }
 
 async function startScanner() {
