@@ -109,12 +109,15 @@ function renderCards() {
     el.innerHTML = `
       <div class="carditem__grid">
         <img class="carditem__img" alt="" />
-        <div class="carditem__name"></div>
+        <div class="carditem__name">
+          <div class="carditem__nameText"></div>
+        </div>
       </div>
     `;
     const img = el.querySelector(".carditem__img");
     img.src = card.logoImage || card.frontImage || "./icons/icon-192.png";
-    el.querySelector(".carditem__name").textContent = card.name;
+    const name = String(card.name || "").trim() || "Tessera";
+    el.querySelector(".carditem__nameText").textContent = name;
     el.addEventListener("click", () => openCard(card.id));
     cardsList.appendChild(el);
   }

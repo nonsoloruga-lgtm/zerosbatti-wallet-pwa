@@ -95,6 +95,18 @@ body {
   padding: 10px 12px;
   font-weight: 800;
   font-size: 22px;
+  color: var(--ink);
+  background:
+    radial-gradient(120px 80px at 30% 30%, rgba(127,216,214,0.18), rgba(255,255,255,0) 60%),
+    radial-gradient(140px 90px at 70% 70%, rgba(199,177,247,0.18), rgba(255,255,255,0) 60%),
+    #fff;
+}
+.carditem__nameText {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .fab {
