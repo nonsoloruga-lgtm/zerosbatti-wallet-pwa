@@ -13,6 +13,7 @@ const cardsEmpty = document.getElementById("cardsEmpty");
 
 const btnSearch = document.getElementById("btnSearch");
 const btnVoice = document.getElementById("btnVoice");
+const btnInstall = document.getElementById("btnInstall");
 const searchRow = document.getElementById("searchRow");
 const searchInput = document.getElementById("searchInput");
 
@@ -53,6 +54,83 @@ function showView(name) {
 
 tabCards.addEventListener("click", () => showView("cards"));
 tabInfo.addEventListener("click", () => showView("info"));
+
+let deferredInstallPrompt = null;
+
+function setInstallButtonVisible(visible) {
+  if (!btnInstall) return;
+  btnInstall.style.display = visible ? "inline-flex" : "none";
+}
+
+function openInstallHelpSheet() {
+  const backdrop = document.createElement("div");
+  backdrop.className = "sheet-backdrop";
+  const ios = typeof isIOS === "function" ? isIOS() : /iphone|ipad|ipod/i.test(navigator.userAgent || "");
+  backdrop.innerHTML = `
+    <div class="sheet">
+      <div class="sheet__title">Installa l'app</div>
+      <div style="padding: 0 14px 14px; color: var(--muted); line-height: 1.4;">
+        ${
+          ios
+            ? `Su iPhone/iPad non c'è un bottone "Installa" automatico.<br/><br/>
+               1) Apri il link in <b>Safari</b><br/>
+               2) Tocca <b>Condividi</b><br/>
+               3) <b>Aggiungi alla schermata Home</b>`
+            : `Su Android (Chrome):<br/><br/>
+               1) Tocca il menu <b>⋮</b><br/>
+               2) <b>Installa app</b> (o <b>Aggiungi a schermata Home</b>)`
+        }
+      </div>
+      <button class="sheet__btn" data-action="close">Chiudi</button>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop) backdrop.remove();
+  });
+  backdrop.querySelector("[data-action='close']").onclick = () => backdrop.remove();
+}
+
+function updateInstallUi() {
+  if (!btnInstall) return;
+  if (typeof isStandaloneDisplayMode === "function" && isStandaloneDisplayMode()) {
+    setInstallButtonVisible(false);
+    return;
+  }
+  const ios = typeof isIOS === "function" ? isIOS() : /iphone|ipad|ipod/i.test(navigator.userAgent || "");
+  // Android: show only if we actually have the prompt. iOS: show to display instructions.
+  setInstallButtonVisible(ios || !!deferredInstallPrompt);
+}
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  updateInstallUi();
+});
+
+window.addEventListener("appinstalled", () => {
+  deferredInstallPrompt = null;
+  updateInstallUi();
+});
+
+if (btnInstall) {
+  btnInstall.addEventListener("click", async () => {
+    if (typeof isStandaloneDisplayMode === "function" && isStandaloneDisplayMode()) return;
+    if (deferredInstallPrompt) {
+      try {
+        deferredInstallPrompt.prompt();
+        await deferredInstallPrompt.userChoice;
+      } catch {
+        // ignore
+      } finally {
+        deferredInstallPrompt = null;
+        updateInstallUi();
+      }
+      return;
+    }
+    openInstallHelpSheet();
+  });
+}
 
 btnSearch.addEventListener("click", () => {
   searchRow.classList.toggle("hidden");
@@ -1194,6 +1272,7 @@ async function loadCards() {
 // Default landing
 showView("cards");
 loadCards();
+updateInstallUi();
 
 // PWA SW
 if ("serviceWorker" in navigator) {
