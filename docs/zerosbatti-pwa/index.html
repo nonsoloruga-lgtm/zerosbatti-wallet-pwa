@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#7FD8D6" />
+    <title>ZeroSbatti Wallet</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/icon-192.png" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="topbar__brand">
+          <div class="topbar__title">ZeroSbatti Wallet</div>
+          <div class="topbar__subtitle">Sfoglia le tue tessere</div>
+        </div>
+        <div class="topbar__actions">
+          <button class="iconbtn" id="btnSearch" title="Cerca">🔍</button>
+          <button class="iconbtn" id="btnVoice" title="Voce">🎤</button>
+        </div>
+      </header>
+
+      <main class="main">
+        <section id="view-cards" class="view view--active">
+          <div id="searchRow" class="search-row hidden">
+            <input id="searchInput" class="search" type="search" placeholder="Cerca tessera per nome" />
+          </div>
+
+          <div id="cardsEmpty" class="empty hidden">
+            <div class="empty__title">Nessuna tessera salvata.</div>
+            <div class="empty__hint">Usa il tasto + per aggiungerne una.</div>
+          </div>
+
+          <div id="cardsList" class="cards"></div>
+        </section>
+
+        <section id="view-card" class="view">
+          <button class="backlink" id="btnBackToCards">← Indietro</button>
+
+          <div class="cardhero">
+            <img id="detailLogo" class="cardhero__logo hidden" alt="" />
+            <div id="detailName" class="cardhero__name"></div>
+          </div>
+
+          <div class="barcodebox">
+            <svg id="barcodeSvg" class="barcodebox__svg"></svg>
+            <div id="codeText" class="barcodebox__code"></div>
+          </div>
+
+          <div id="frontBackRow" class="frontback hidden">
+            <div class="frontback__col">
+              <div class="frontback__label">Fronte</div>
+              <img id="detailFront" class="frontback__img hidden" alt="" />
+            </div>
+            <div class="frontback__col">
+              <div class="frontback__label">Retro</div>
+              <img id="detailBack" class="frontback__img hidden" alt="" />
+            </div>
+          </div>
+
+          <div class="detail-actions">
+            <button class="btn" id="btnEdit">Modifica</button>
+            <button class="btn btn--danger" id="btnDelete">Elimina</button>
+          </div>
+        </section>
+
+        <section id="view-info" class="view">
+          <div class="info">
+            <img class="info__logo" src="./icons/icon-512.png" alt="ZeroSbatti" />
+            <div class="info__cta">
+              <div class="info__ctaText">Se ti ho fatto risparmiare tempo in cassa, supporta il progetto!</div>
+              <button class="btn btn--cta" id="btnCoffee">Offrimi un caffè ☕</button>
+              <div class="info__link">https://paa.ge/zerosbatti/en</div>
+            </div>
+
+            <div class="info__title">ZeroSbatti Wallet</div>
+            <div class="info__text">
+              Ciao! Ho creato Zero Sbatti perché ero stufa di arrivare alla cassa e perdere tempo ad aprire app lente, piene di pubblicità e che mi tracciavano. Questa app fa una cosa sola, e la fa velocemente: mostra i tuoi codici fedeltà, anche se nel supermercato non c'è campo. Zero fronzoli, zero spionaggio dei tuoi dati, zero sbatte.
+              <br /><br />
+              <b>Supporta il Progetto:</b><br />
+              Zero Sbatti è gratis per te e non guadagna vendendo i tuoi dati. È un progetto artigianale che mantengo nel mio tempo libero. Se ti ho fatto risparmiare tempo e stress in cassa, puoi offrirmi un caffè virtuale per supportare lo sviluppo!
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <button class="fab" id="fabAdd" title="Aggiungi">+</button>
+
+      <nav class="tabbar">
+        <button class="tab tab--active" id="tabCards">
+          <span class="tab__icon">🪪</span>
+          <span class="tab__label">Tessere</span>
+        </button>
+        <button class="tab" id="tabInfo">
+          <span class="tab__icon">ℹ️</span>
+          <span class="tab__label">Info</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- External libs (cached by SW after first load) -->
+    <script defer src="https://cdn.jsdelivr.net/npm/jsbarcode@3.12.3/dist/JsBarcode.all.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <!-- iOS Safari doesn't support BarcodeDetector; ship a local fallback scanner lib. -->
+    <script defer src="./vendor/html5-qrcode.min.js"></script>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
