@@ -97,13 +97,14 @@ body {
   height: 100%;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: center;
   padding: 10px;
   color: rgba(30, 42, 59, 0.92);
+  text-align: center;
+  gap: 10px;
 }
 .carditem__phInit {
-  align-self: flex-end;
   font-weight: 950;
   font-size: 24px;
   letter-spacing: 0.5px;
@@ -113,8 +114,7 @@ body {
   border-radius: 12px;
 }
 .carditem__phName {
-  margin-top: 8px;
-  width: 100%;
+  width: 92%;
   font-weight: 900;
   font-size: 12px;
   letter-spacing: 0.2px;

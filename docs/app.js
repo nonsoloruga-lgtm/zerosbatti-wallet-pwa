@@ -706,14 +706,14 @@ async function openEditor(state) {
     }
   };
   backdrop.querySelector("#btnSetFront").onclick = async () => {
-    const cropped = await pickImage({ presetAspect: "free", outputMax: 1200, title: "Ritaglia foto" });
+    const cropped = await pickImage({ presetAspect: "16:9", outputMax: 1200, title: "Ritaglia fronte" });
     if (cropped) {
       state.frontImage = cropped;
       refreshPvs();
     }
   };
   backdrop.querySelector("#btnSetBack").onclick = async () => {
-    const cropped = await pickImage({ presetAspect: "free", outputMax: 1200, title: "Ritaglia retro" });
+    const cropped = await pickImage({ presetAspect: "16:9", outputMax: 1200, title: "Ritaglia retro" });
     if (cropped) {
       state.backImage = cropped;
       refreshPvs();
@@ -821,7 +821,7 @@ async function openCropper({ dataUrl, outputMax = 1200, title = "Ritaglia", mime
   const vh = vb.height;
 
   const coverScale = () => Math.max(vw / working.naturalWidth, vh / working.naturalHeight);
-  let scale = coverScale;
+  let scale = coverScale();
   let x = (vw - working.naturalWidth * scale) / 2;
   let y = (vh - working.naturalHeight * scale) / 2;
 
@@ -1052,6 +1052,11 @@ async function openCropper({ dataUrl, outputMax = 1200, title = "Ritaglia", mime
     canvas.height = outH;
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
+
+    if (mime !== "image/png") {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, outW, outH);
+    }
 
     const srcX = (crop.x - x) / scale;
     const srcY = (crop.y - y) / scale;
