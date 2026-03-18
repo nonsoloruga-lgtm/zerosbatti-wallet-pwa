@@ -254,6 +254,9 @@ body {
   background: rgba(255,255,255,0.9);
   border: 1px solid var(--stroke);
 }
+.btn--outlineRed {
+  border: 2px solid var(--coral);
+}
 .btn--danger { background: #d9534f; color: #fff; border: 0; }
 .btn--cta { background: var(--coral); color: #fff; border: 0; }
 
@@ -298,7 +301,7 @@ body {
 
 .pvrow {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 10px;
 }
 .pv {

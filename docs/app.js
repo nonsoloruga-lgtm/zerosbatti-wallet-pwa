@@ -581,9 +581,10 @@ async function openEditor(state) {
           <option value="qr">QR Code</option>
         </select>
 
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:14px;">
-          <button class="btn" id="btnSetLogo">Logo</button>
+        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; margin-top:14px;">
+          <button class="btn btn--outlineRed" id="btnSetLogo">Logo</button>
           <button class="btn" id="btnSetFront">Fronte</button>
+          <button class="btn btn--outlineRed" id="btnSetBack">Retro</button>
         </div>
         <div class="pvrow" style="margin-top:10px;">
           <div class="pv" id="pvLogoWrap">
@@ -600,11 +601,18 @@ async function openEditor(state) {
               <div class="pv__name" id="pvFrontName"></div>
             </div>
           </div>
+          <div class="pv" id="pvBackWrap">
+            <img id="pvBackImg" class="pv__img" alt="" />
+            <div class="pv__ph">
+              <div class="pv__init" id="pvBackInit"></div>
+              <div class="pv__name" id="pvBackName"></div>
+            </div>
+          </div>
         </div>
 
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:14px;">
-          <button class="btn btn--cta" id="btnSave">Salva</button>
           <button class="btn" id="btnCancel">Annulla</button>
+          <button class="btn btn--cta" id="btnSave">Salva</button>
         </div>
       </div>
     </div>
@@ -622,6 +630,10 @@ async function openEditor(state) {
   const pvFrontImg = backdrop.querySelector("#pvFrontImg");
   const pvFrontInit = backdrop.querySelector("#pvFrontInit");
   const pvFrontName = backdrop.querySelector("#pvFrontName");
+  const pvBackWrap = backdrop.querySelector("#pvBackWrap");
+  const pvBackImg = backdrop.querySelector("#pvBackImg");
+  const pvBackInit = backdrop.querySelector("#pvBackInit");
+  const pvBackName = backdrop.querySelector("#pvBackName");
 
   edName.value = state.name || "";
   edCode.value = state.code || "";
@@ -661,6 +673,15 @@ async function openEditor(state) {
       key: state.id + "_front",
       name: edName.value
     });
+    renderPv({
+      wrap: pvBackWrap,
+      imgEl: pvBackImg,
+      initEl: pvBackInit,
+      nameEl: pvBackName,
+      imageData: state.backImage,
+      key: state.id + "_back",
+      name: edName.value
+    });
   };
   refreshPvs();
   edName.addEventListener("input", () => refreshPvs());
@@ -688,6 +709,13 @@ async function openEditor(state) {
     const cropped = await pickImage({ presetAspect: "free", outputMax: 1200, title: "Ritaglia foto" });
     if (cropped) {
       state.frontImage = cropped;
+      refreshPvs();
+    }
+  };
+  backdrop.querySelector("#btnSetBack").onclick = async () => {
+    const cropped = await pickImage({ presetAspect: "free", outputMax: 1200, title: "Ritaglia retro" });
+    if (cropped) {
+      state.backImage = cropped;
       refreshPvs();
     }
   };
