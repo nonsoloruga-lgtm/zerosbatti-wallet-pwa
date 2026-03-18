@@ -546,8 +546,37 @@ async function openScannerHtml5Qrcode() {
     return s.includes("qr") ? "qr_code" : "code_128";
   };
 
-  // eslint-disable-next-line no-undef
-  const scanner = new Html5Qrcode("scannerReader");
+  // Prefer explicit supported formats when available (helps 1D barcodes on some builds).
+  let scanner = null;
+  try {
+    // eslint-disable-next-line no-undef
+    const fmts =
+      typeof Html5QrcodeSupportedFormats !== "undefined"
+        ? [
+            // eslint-disable-next-line no-undef
+            Html5QrcodeSupportedFormats.QR_CODE,
+            // eslint-disable-next-line no-undef
+            Html5QrcodeSupportedFormats.CODE_128,
+            // eslint-disable-next-line no-undef
+            Html5QrcodeSupportedFormats.EAN_13,
+            // eslint-disable-next-line no-undef
+            Html5QrcodeSupportedFormats.EAN_8,
+            // eslint-disable-next-line no-undef
+            Html5QrcodeSupportedFormats.UPC_A,
+            // eslint-disable-next-line no-undef
+            Html5QrcodeSupportedFormats.UPC_E,
+            // eslint-disable-next-line no-undef
+            Html5QrcodeSupportedFormats.CODE_39,
+            // eslint-disable-next-line no-undef
+            Html5QrcodeSupportedFormats.ITF
+          ]
+        : null;
+    // eslint-disable-next-line no-undef
+    scanner = fmts ? new Html5Qrcode("scannerReader", { formatsToSupport: fmts }) : new Html5Qrcode("scannerReader");
+  } catch {
+    // eslint-disable-next-line no-undef
+    scanner = new Html5Qrcode("scannerReader");
+  }
 
   const stop = async () => {
     if (stopped) return;
@@ -573,13 +602,24 @@ async function openScannerHtml5Qrcode() {
     qrbox: (vw, vh) => {
       const size = Math.floor(Math.min(vw, vh) * 0.72);
       return { width: size, height: size };
+    },
+    experimentalFeatures: {
+      useBarCodeDetectorIfSupported: true
     }
   };
 
   return new Promise((resolve) => {
+    const videoConstraints = {
+      facingMode: "environment",
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
+      frameRate: { ideal: 30, max: 30 },
+      advanced: [{ focusMode: "continuous" }, { zoom: 1.2 }]
+    };
+
     scanner
       .start(
-        { facingMode: "environment" },
+        videoConstraints,
         config,
         async (decodedText, decodedResult) => {
           if (!decodedText) return;
@@ -619,7 +659,13 @@ async function openScannerHtml5Qrcode() {
   });
 }
 
+function isIOS() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent || "");
+}
+
 async function openScanner() {
+  // iOS Safari: prefer html5-qrcode for reliability (BarcodeDetector can be flaky across iOS versions).
+  if (isIOS() && typeof window.Html5Qrcode !== "undefined") return openScannerHtml5Qrcode();
   // Chrome/Android
   if ("BarcodeDetector" in window) return openScannerBarcodeDetector();
   // iOS Safari fallback
