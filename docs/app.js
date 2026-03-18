@@ -158,6 +158,8 @@ function renderCards() {
     const media = el.querySelector(".carditem__media");
     const imgSrc = card.logoImage || card.frontImage || "";
     if (imgSrc) {
+      const th = cardTheme(card.id || name);
+      media.style.backgroundImage = `${th.bg2}, ${th.bg}`;
       const img = document.createElement("img");
       img.className = "carditem__img";
       img.alt = "";
@@ -663,7 +665,7 @@ async function openEditor(state) {
   refreshPvs();
   edName.addEventListener("input", () => refreshPvs());
 
-  const pickImage = async ({ aspect, outputWidth, outputHeight, title }) => {
+  const pickImage = async ({ outputMax, title, presetAspect }) => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
@@ -672,18 +674,18 @@ async function openEditor(state) {
     if (!file) return null;
     const dataUrl = await fileToDataUrl(file);
     const mime = file.type === "image/png" ? "image/png" : "image/jpeg";
-    return await openCropper({ dataUrl, aspect, outputWidth, outputHeight, title, mime });
+    return await openCropper({ dataUrl, outputMax, title, mime, presetAspect });
   };
 
   backdrop.querySelector("#btnSetLogo").onclick = async () => {
-    const cropped = await pickImage({ aspect: 1, outputWidth: 512, outputHeight: 512, title: "Ritaglia logo" });
+    const cropped = await pickImage({ presetAspect: "square", outputMax: 512, title: "Ritaglia logo" });
     if (cropped) {
       state.logoImage = cropped;
       refreshPvs();
     }
   };
   backdrop.querySelector("#btnSetFront").onclick = async () => {
-    const cropped = await pickImage({ aspect: 16 / 9, outputWidth: 960, outputHeight: 540, title: "Ritaglia foto" });
+    const cropped = await pickImage({ presetAspect: "free", outputMax: 1200, title: "Ritaglia foto" });
     if (cropped) {
       state.frontImage = cropped;
       refreshPvs();
@@ -734,8 +736,9 @@ function clamp(n, a, b) {
   return Math.max(a, Math.min(b, n));
 }
 
-async function openCropper({ dataUrl, aspect = 1, outputWidth = 960, outputHeight = 540, title = "Ritaglia", mime = "image/jpeg" }) {
-  const img = await loadImage(dataUrl);
+async function openCropper({ dataUrl, outputMax = 1200, title = "Ritaglia", mime = "image/jpeg", presetAspect = "free" }) {
+  let working = await loadImage(dataUrl);
+  let aspectMode = presetAspect; // "free" | "square" | "16:9"
 
   const backdrop = document.createElement("div");
   backdrop.className = "cropper-backdrop";
@@ -744,11 +747,26 @@ async function openCropper({ dataUrl, aspect = 1, outputWidth = 960, outputHeigh
       <div class="cropper__header">
         <div class="cropper__title"></div>
       </div>
+      <div class="cropper__tools">
+        <button class="cropper__toolbtn" id="cropRotateLeft" type="button">⟲</button>
+        <button class="cropper__toolbtn" id="cropRotateRight" type="button">⟳</button>
+        <select class="cropper__select" id="cropAspect">
+          <option value="free">Libero</option>
+          <option value="square">Quadrato</option>
+          <option value="16:9">16:9</option>
+        </select>
+      </div>
       <div class="cropper__body">
-        <div class="cropper__viewport" style="aspect-ratio: ${aspect};">
+        <div class="cropper__viewport">
           <img class="cropper__img" alt="" />
+          <div class="cropper__crop" id="cropBox">
+            <div class="cropper__handle cropper__handle--tl" data-h="tl"></div>
+            <div class="cropper__handle cropper__handle--tr" data-h="tr"></div>
+            <div class="cropper__handle cropper__handle--bl" data-h="bl"></div>
+            <div class="cropper__handle cropper__handle--br" data-h="br"></div>
+          </div>
         </div>
-        <div class="cropper__hint">Trascina per spostare • Usa lo zoom</div>
+        <div class="cropper__hint">Trascina per spostare • Ridimensiona gli angoli • Ruota se serve</div>
         <input class="cropper__zoom" type="range" min="1" max="3" step="0.01" value="1" />
       </div>
       <div class="cropper__footer">
@@ -763,49 +781,176 @@ async function openCropper({ dataUrl, aspect = 1, outputWidth = 960, outputHeigh
   const imgEl = backdrop.querySelector(".cropper__img");
   const zoomEl = backdrop.querySelector(".cropper__zoom");
   const titleEl = backdrop.querySelector(".cropper__title");
+  const cropBox = backdrop.querySelector("#cropBox");
+  const aspectSel = backdrop.querySelector("#cropAspect");
   titleEl.textContent = title;
   imgEl.src = dataUrl;
+  aspectSel.value = aspectMode;
 
   await new Promise((r) => requestAnimationFrame(r));
   const vb = viewport.getBoundingClientRect();
   const vw = vb.width;
   const vh = vb.height;
 
-  const coverScale = Math.max(vw / img.naturalWidth, vh / img.naturalHeight);
+  const coverScale = () => Math.max(vw / working.naturalWidth, vh / working.naturalHeight);
   let scale = coverScale;
-  let x = (vw - img.naturalWidth * scale) / 2;
-  let y = (vh - img.naturalHeight * scale) / 2;
+  let x = (vw - working.naturalWidth * scale) / 2;
+  let y = (vh - working.naturalHeight * scale) / 2;
+
+  const aspectValue = () => {
+    if (aspectMode === "square") return 1;
+    if (aspectMode === "16:9") return 16 / 9;
+    return 0;
+  };
+
+  let crop = { x: vw * 0.07, y: vh * 0.14, w: vw * 0.86, h: vh * 0.72 };
+  const normalizeCrop = () => {
+    const a = aspectValue();
+    if (a) {
+      // Keep within viewport while enforcing aspect.
+      const maxW = vw * 0.92;
+      const maxH = vh * 0.78;
+      let w = maxW;
+      let h = w / a;
+      if (h > maxH) {
+        h = maxH;
+        w = h * a;
+      }
+      crop.w = w;
+      crop.h = h;
+      crop.x = (vw - w) / 2;
+      crop.y = (vh - h) / 2;
+    } else {
+      crop = { x: vw * 0.07, y: vh * 0.14, w: vw * 0.86, h: vh * 0.72 };
+    }
+  };
+  normalizeCrop();
 
   const apply = () => {
-    const rw = img.naturalWidth * scale;
-    const rh = img.naturalHeight * scale;
+    const rw = working.naturalWidth * scale;
+    const rh = working.naturalHeight * scale;
     x = clamp(x, vw - rw, 0);
     y = clamp(y, vh - rh, 0);
     imgEl.style.width = `${rw}px`;
     imgEl.style.height = `${rh}px`;
     imgEl.style.transform = `translate(${x}px, ${y}px)`;
   };
+  const applyCrop = () => {
+    crop.x = clamp(crop.x, 0, vw - crop.w);
+    crop.y = clamp(crop.y, 0, vh - crop.h);
+    crop.w = clamp(crop.w, 60, vw - crop.x);
+    crop.h = clamp(crop.h, 60, vh - crop.y);
+    cropBox.style.left = `${crop.x}px`;
+    cropBox.style.top = `${crop.y}px`;
+    cropBox.style.width = `${crop.w}px`;
+    cropBox.style.height = `${crop.h}px`;
+  };
   apply();
+  applyCrop();
 
   const zoomTo = (factor) => {
-    const newScale = coverScale * factor;
-    const cx = (vw / 2 - x) / scale;
-    const cy = (vh / 2 - y) / scale;
+    const newScale = coverScale() * factor;
+    const fx = crop.x + crop.w / 2;
+    const fy = crop.y + crop.h / 2;
+    const cx = (fx - x) / scale;
+    const cy = (fy - y) / scale;
     scale = newScale;
-    x = vw / 2 - cx * scale;
-    y = vh / 2 - cy * scale;
+    x = fx - cx * scale;
+    y = fy - cy * scale;
     apply();
   };
   zoomEl.addEventListener("input", () => zoomTo(Number(zoomEl.value)));
 
-  let dragging = false;
+  const hitTestCrop = (clientX, clientY) => {
+    const rx = clientX - vb.left;
+    const ry = clientY - vb.top;
+    if (rx >= crop.x && rx <= crop.x + crop.w && ry >= crop.y && ry <= crop.y + crop.h) return { rx, ry, inside: true };
+    return { rx, ry, inside: false };
+  };
+
+  let mode = null; // "pan" | "moveCrop" | "resizeCrop"
+  let handle = "";
   let startX = 0;
   let startY = 0;
   let baseX = 0;
   let baseY = 0;
+  let baseCrop = null;
+
+  cropBox.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    const t = e.target;
+    const h = t?.getAttribute?.("data-h") || "";
+    mode = h ? "resizeCrop" : "moveCrop";
+    handle = h;
+    cropBox.setPointerCapture(e.pointerId);
+    startX = e.clientX;
+    startY = e.clientY;
+    baseCrop = { ...crop };
+  });
+
+  cropBox.addEventListener("pointermove", (e) => {
+    if (!mode) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    const a = aspectValue();
+
+    if (mode === "moveCrop") {
+      crop.x = baseCrop.x + dx;
+      crop.y = baseCrop.y + dy;
+      applyCrop();
+      return;
+    }
+
+    if (mode === "resizeCrop") {
+      let nx = baseCrop.x;
+      let ny = baseCrop.y;
+      let nw = baseCrop.w;
+      let nh = baseCrop.h;
+
+      if (handle.includes("r")) nw = baseCrop.w + dx;
+      if (handle.includes("l")) {
+        nw = baseCrop.w - dx;
+        nx = baseCrop.x + dx;
+      }
+      if (handle.includes("b")) nh = baseCrop.h + dy;
+      if (handle.includes("t")) {
+        nh = baseCrop.h - dy;
+        ny = baseCrop.y + dy;
+      }
+
+      const min = 70;
+      nw = Math.max(min, nw);
+      nh = Math.max(min, nh);
+
+      if (a) {
+        // lock ratio using dominant change
+        const want = nw / nh;
+        if (want > a) {
+          nw = nh * a;
+          if (handle.includes("l")) nx = baseCrop.x + (baseCrop.w - nw);
+        } else {
+          nh = nw / a;
+          if (handle.includes("t")) ny = baseCrop.y + (baseCrop.h - nh);
+        }
+      }
+
+      crop = { x: nx, y: ny, w: nw, h: nh };
+      applyCrop();
+    }
+  });
+
+  const endCropDrag = () => {
+    mode = null;
+    handle = "";
+    baseCrop = null;
+  };
+  cropBox.addEventListener("pointerup", endCropDrag);
+  cropBox.addEventListener("pointercancel", endCropDrag);
 
   viewport.addEventListener("pointerdown", (e) => {
-    dragging = true;
+    const hit = hitTestCrop(e.clientX, e.clientY);
+    if (hit.inside) return;
+    mode = "pan";
     viewport.setPointerCapture(e.pointerId);
     startX = e.clientX;
     startY = e.clientY;
@@ -813,31 +958,85 @@ async function openCropper({ dataUrl, aspect = 1, outputWidth = 960, outputHeigh
     baseY = y;
   });
   viewport.addEventListener("pointermove", (e) => {
-    if (!dragging) return;
+    if (mode !== "pan") return;
     x = baseX + (e.clientX - startX);
     y = baseY + (e.clientY - startY);
     apply();
   });
   viewport.addEventListener("pointerup", () => {
-    dragging = false;
+    if (mode === "pan") mode = null;
   });
   viewport.addEventListener("pointercancel", () => {
-    dragging = false;
+    if (mode === "pan") mode = null;
   });
+
+  const rotateWorking = async (dir) => {
+    // dir: -1 or +1  (90° steps)
+    const c = document.createElement("canvas");
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
+    const w = working.naturalWidth;
+    const h = working.naturalHeight;
+    c.width = h;
+    c.height = w;
+    if (dir > 0) {
+      ctx.translate(h, 0);
+      ctx.rotate(Math.PI / 2);
+    } else {
+      ctx.translate(0, w);
+      ctx.rotate(-Math.PI / 2);
+    }
+    ctx.drawImage(working, 0, 0);
+    const nextUrl = c.toDataURL("image/png");
+    working = await loadImage(nextUrl);
+    imgEl.src = nextUrl;
+    zoomEl.value = "1";
+    scale = coverScale();
+    x = (vw - working.naturalWidth * scale) / 2;
+    y = (vh - working.naturalHeight * scale) / 2;
+    normalizeCrop();
+    apply();
+    applyCrop();
+  };
+
+  backdrop.querySelector("#cropRotateLeft").onclick = () => void rotateWorking(-1);
+  backdrop.querySelector("#cropRotateRight").onclick = () => void rotateWorking(1);
+  aspectSel.onchange = () => {
+    aspectMode = aspectSel.value;
+    normalizeCrop();
+    applyCrop();
+  };
 
   const exportCropped = () => {
     const canvas = document.createElement("canvas");
-    canvas.width = outputWidth;
-    canvas.height = outputHeight;
+    const a = crop.w / crop.h;
+    let outW = outputMax;
+    let outH = Math.round(outputMax / a);
+    if (a < 1) {
+      outH = outputMax;
+      outW = Math.round(outputMax * a);
+    }
+    if (aspectMode === "square") {
+      outW = outputMax;
+      outH = outputMax;
+    }
+    canvas.width = outW;
+    canvas.height = outH;
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
 
-    const srcX = (-x) / scale;
-    const srcY = (-y) / scale;
-    const srcW = vw / scale;
-    const srcH = vh / scale;
+    const srcX = (crop.x - x) / scale;
+    const srcY = (crop.y - y) / scale;
+    const srcW = crop.w / scale;
+    const srcH = crop.h / scale;
 
-    ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, outputWidth, outputHeight);
+    // Clamp source area inside image bounds.
+    const sx = clamp(srcX, 0, Math.max(0, working.naturalWidth - 1));
+    const sy = clamp(srcY, 0, Math.max(0, working.naturalHeight - 1));
+    const sw = clamp(srcW, 1, working.naturalWidth - sx);
+    const sh = clamp(srcH, 1, working.naturalHeight - sy);
+
+    ctx.drawImage(working, sx, sy, sw, sh, 0, 0, outW, outH);
     if (mime === "image/png") return canvas.toDataURL("image/png");
     return canvas.toDataURL("image/jpeg", 0.88);
   };
