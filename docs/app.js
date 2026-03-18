@@ -487,7 +487,11 @@ async function openScannerBarcodeDetector() {
       audio: false
     });
     video.srcObject = stream;
-    await video.play();
+    try {
+      await video.play();
+    } catch {
+      // iOS can be picky; continue and let the tick loop wait for readyState.
+    }
     markCameraPermissionGranted();
   } catch (e) {
     stop();
@@ -533,6 +537,53 @@ async function openScannerBarcodeDetector() {
   };
 
   return tick();
+}
+
+async function openScannerPhotoCapture() {
+  // Fallback: use native camera/photo picker (works even when getUserMedia is flaky on iOS),
+  // then decode from the captured image.
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "sheet-backdrop";
+    overlay.innerHTML = `
+      <div class="sheet">
+        <div class="sheet__title">Scansiona da foto</div>
+        <div class="sheet__content">
+          Se lo scanner live non funziona, puoi scattare una foto al codice e lo leggiamo da lì.
+        </div>
+        <div style="padding: 0 14px 14px;">
+          <input id="scanPhotoInput" type="file" accept="image/*" capture="environment" style="width:100%;" />
+        </div>
+        <button class="sheet__btn" data-action="cancel">Annulla</button>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const cleanup = () => overlay.remove();
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) {
+        cleanup();
+        resolve(null);
+      }
+    });
+    overlay.querySelector("[data-action='cancel']").onclick = () => {
+      cleanup();
+      resolve(null);
+    };
+
+    const input = overlay.querySelector("#scanPhotoInput");
+    input.addEventListener("change", async () => {
+      const file = input.files?.[0] || null;
+      if (!file) return;
+      cleanup();
+      try {
+        const res = await detectFromImageFile(file);
+        resolve(res);
+      } catch {
+        resolve(null);
+      }
+    });
+  });
 }
 
 function applyVideoCssZoom(videoEl, scale) {
@@ -790,8 +841,14 @@ function isIOS() {
 }
 
 async function openScanner() {
-  // iOS Safari: prefer html5-qrcode for reliability (BarcodeDetector can be flaky across iOS versions).
-  if (isIOS() && typeof window.Html5Qrcode !== "undefined") return openScannerHtml5Qrcode();
+  // iOS: try the simplest native path first if available, then html5-qrcode.
+  if (isIOS()) {
+    if ("BarcodeDetector" in window) {
+      const r = await openScannerBarcodeDetector();
+      if (r) return r;
+    }
+    if (typeof window.Html5Qrcode !== "undefined") return openScannerHtml5Qrcode();
+  }
   // Chrome/Android
   if ("BarcodeDetector" in window) return openScannerBarcodeDetector();
   // iOS Safari fallback
@@ -876,12 +933,19 @@ async function startScanner() {
   // If the browser says it's granted (or we have a previous successful start), start immediately.
   // Note: getUserMedia often still requires a user gesture on some platforms; in this app startScanner()
   // is invoked from a click flow, so it's safe.
-  if (perm === "granted" || wasCameraPermissionGrantedBefore()) {
-    return openScanner();
+  const result = await openScanner();
+  if (result) return result;
+
+  // iOS fallback: allow scanning from a captured photo if live camera is not available.
+  if (isIOS()) {
+    const ok = confirm(
+      "Lo scanner live non è disponibile su questo iPhone.\n\nVuoi scansionare scattando una foto al barcode/QR?"
+    );
+    if (!ok) return null;
+    return openScannerPhotoCapture();
   }
 
-  // "prompt"/unknown: try to start; browser will ask once if needed.
-  return openScanner();
+  return null;
 }
 
 async function openManageFlow({ action, mode, card }) {
