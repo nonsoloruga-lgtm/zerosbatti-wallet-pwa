@@ -491,7 +491,7 @@ async function openScannerBarcodeDetector() {
     markCameraPermissionGranted();
   } catch (e) {
     stop();
-    alert("Permesso fotocamera negato o non disponibile.");
+    showCameraStartError(e);
     return null;
   }
 
@@ -723,9 +723,9 @@ async function openScannerHtml5Qrcode() {
       .then(() => {
         markCameraPermissionGranted();
       })
-      .catch(async () => {
+      .catch(async (e) => {
         await stop();
-        alert("Permesso fotocamera negato o non disponibile.");
+        showCameraStartError(e);
         resolve(null);
       });
 
@@ -810,6 +810,19 @@ function showCameraDeniedHelp() {
   alert(
     "Permesso fotocamera negato.\n\nAbilita la fotocamera per questo sito nelle impostazioni del browser (Permessi sito) e riprova."
   );
+}
+
+function showCameraStartError(err) {
+  const name = err?.name || "";
+  if (name === "NotAllowedError" || name === "SecurityError") {
+    showCameraDeniedHelp();
+    return;
+  }
+  if (name === "NotFoundError" || name === "OverconstrainedError") {
+    alert("Fotocamera non trovata o non disponibile su questo dispositivo.");
+    return;
+  }
+  alert("Fotocamera non disponibile.");
 }
 
 async function startScanner() {
