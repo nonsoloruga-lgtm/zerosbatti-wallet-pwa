@@ -625,6 +625,7 @@ async function openScannerHtml5Qrcode() {
 
   const btnClose = overlay.querySelector("#scannerClose");
   let stopped = false;
+  let finalize = null;
 
   const mapFormat = (decodedResult) => {
     const name =
@@ -685,7 +686,7 @@ async function openScannerHtml5Qrcode() {
     overlay.remove();
   };
 
-  btnClose.addEventListener("click", () => void stop());
+  btnClose.addEventListener("click", () => (finalize ? void finalize(null) : void stop()));
 
   const config = {
     fps: 10,
@@ -700,34 +701,68 @@ async function openScannerHtml5Qrcode() {
   };
 
   return new Promise((resolve) => {
-    const videoConstraints = {
-      facingMode: "environment",
-      width: { ideal: 1920 },
-      height: { ideal: 1080 },
-      frameRate: { ideal: 30, max: 30 },
-      advanced: [{ focusMode: "continuous" }, { zoom: 1.2 }]
+    let resolved = false;
+    const safeResolve = (val) => {
+      if (resolved) return;
+      resolved = true;
+      resolve(val);
     };
 
-    scanner
-      .start(
-        videoConstraints,
-        config,
-        async (decodedText, decodedResult) => {
-          if (!decodedText) return;
-          const out = { code: String(decodedText), format: mapFormat(decodedResult) };
-          resolve(out);
-          await stop();
-        },
-        () => {}
-      )
-      .then(() => {
+    finalize = async (val) => {
+      safeResolve(val);
+      await stop();
+    };
+
+    const onDecode = async (decodedText, decodedResult) => {
+      if (!decodedText) return;
+      await finalize({ code: String(decodedText), format: mapFormat(decodedResult) });
+    };
+
+    const resetScanner = async () => {
+      try {
+        await scanner.stop();
+      } catch {
+        // ignore
+      }
+      try {
+        await scanner.clear();
+      } catch {
+        // ignore
+      }
+    };
+
+    // iOS Safari can throw NotReadable/Overconstrained with "high" constraints.
+    // Start with minimal constraints, then apply zoom/focus via applyConstraints once <video> exists.
+    const attempts = [
+      { facingMode: { ideal: "environment" }, frameRate: { ideal: 30, max: 30 } },
+      { facingMode: "environment" },
+      {}
+    ];
+
+    let attemptIndex = 0;
+    const startAttempt = async () => {
+      try {
+        await scanner.start(attempts[attemptIndex], config, onDecode, () => {});
         markCameraPermissionGranted();
-      })
-      .catch(async (e) => {
-        await stop();
+      } catch (e) {
+        const name = e?.name || "";
+        if (name === "NotAllowedError" || name === "SecurityError") {
+          await finalize(null);
+          showCameraStartError(e);
+          return;
+        }
+        attemptIndex += 1;
+        if (attemptIndex < attempts.length) {
+          await resetScanner();
+          await startAttempt();
+          return;
+        }
+        await finalize(null);
         showCameraStartError(e);
-        resolve(null);
-      });
+      }
+    };
+
+    void startAttempt();
 
     // Best-effort iOS tuning: once the internal <video> appears, apply track constraints + slight zoom.
     (async () => {
@@ -820,6 +855,12 @@ function showCameraStartError(err) {
   }
   if (name === "NotFoundError" || name === "OverconstrainedError") {
     alert("Fotocamera non trovata o non disponibile su questo dispositivo.");
+    return;
+  }
+  if (name === "NotReadableError" || name === "AbortError") {
+    alert(
+      "Fotocamera non avviabile.\n\nChiudi altre app che usano la fotocamera (WhatsApp/Instagram ecc.), poi riprova. Se non va, riavvia l'iPhone."
+    );
     return;
   }
   alert("Fotocamera non disponibile.");
