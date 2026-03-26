@@ -24,6 +24,10 @@ const fabAdd = document.getElementById("fabAdd");
 const btnCoffee = document.getElementById("btnCoffee");
 btnCoffee.addEventListener("click", () => window.open(COFFEE_URL, "_blank", "noopener,noreferrer"));
 
+const btnExport = document.getElementById("btnExport");
+const btnImport = document.getElementById("btnImport");
+const persistStatus = document.getElementById("persistStatus");
+
 const btnBackToCards = document.getElementById("btnBackToCards");
 btnBackToCards.addEventListener("click", () => showView("cards"));
 
@@ -50,6 +54,9 @@ function showView(name) {
   views[name].classList.add("view--active");
   setActiveTab(name === "info" ? "info" : "cards");
   fabAdd.style.display = name === "cards" ? "block" : "none";
+  if (name === "info") {
+    void ensurePersistentStorage();
+  }
 }
 
 tabCards.addEventListener("click", () => showView("cards"));
@@ -104,6 +111,113 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) void killActiveResources("visibilitychange");
 });
 window.addEventListener("pagehide", () => void killActiveResources("pagehide"));
+
+async function ensurePersistentStorage() {
+  if (!persistStatus) return false;
+  try {
+    if (!navigator.storage || typeof navigator.storage.persisted !== "function") {
+      persistStatus.textContent = "Protezione dati: non supportata su questo browser. Usa Esporta backup.";
+      return false;
+    }
+
+    const already = await navigator.storage.persisted();
+    if (already) {
+      persistStatus.textContent = "Protezione dati: attiva (meno rischio di pulizia automatica).";
+      return true;
+    }
+
+    if (typeof navigator.storage.persist !== "function") {
+      persistStatus.textContent = "Protezione dati: non disponibile. Usa Esporta backup.";
+      return false;
+    }
+
+    const granted = await navigator.storage.persist();
+    persistStatus.textContent = granted
+      ? "Protezione dati: attiva (meno rischio di pulizia automatica)."
+      : "Protezione dati: non garantita. Usa Esporta backup.";
+    return granted;
+  } catch {
+    persistStatus.textContent = "Protezione dati: non disponibile. Usa Esporta backup.";
+    return false;
+  }
+}
+
+function buildBackupPayload(cards) {
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    cards: Array.isArray(cards) ? cards : []
+  };
+}
+
+function sanitizeImportedCard(raw) {
+  const c = raw && typeof raw === "object" ? raw : {};
+  return {
+    id: typeof c.id === "string" && c.id ? c.id : newId(),
+    name: typeof c.name === "string" ? c.name : "",
+    code: typeof c.code === "string" ? c.code : "",
+    format: typeof c.format === "string" ? c.format : "",
+    logoImage: typeof c.logoImage === "string" ? c.logoImage : "",
+    frontImage: typeof c.frontImage === "string" ? c.frontImage : "",
+    backImage: typeof c.backImage === "string" ? c.backImage : ""
+  };
+}
+
+if (btnExport) {
+  btnExport.addEventListener("click", async () => {
+    const cards = await getAllCards();
+    const payload = buildBackupPayload(cards);
+    const json = JSON.stringify(payload, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `zerosbatti-backup-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+}
+
+if (btnImport) {
+  btnImport.addEventListener("click", async () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json,.json";
+    input.click();
+    const file = await new Promise((resolve) => {
+      input.onchange = () => resolve(input.files?.[0] || null);
+    });
+    if (!file) return;
+
+    let parsed = null;
+    try {
+      parsed = JSON.parse(await file.text());
+    } catch {
+      alert("File backup non valido (JSON).");
+      return;
+    }
+
+    const cards = Array.isArray(parsed?.cards) ? parsed.cards : (Array.isArray(parsed) ? parsed : null);
+    if (!cards) {
+      alert("Backup non valido: manca la lista tessere.");
+      return;
+    }
+
+    if (!confirm(`Importare ${cards.length} tessere? Se hanno lo stesso ID, verranno sovrascritte.`)) return;
+
+    for (const raw of cards) {
+      const c = sanitizeImportedCard(raw);
+      if (!c.name || !c.code) continue;
+      await putCard(c);
+    }
+
+    await loadCards();
+    alert("Import completato.");
+  });
+}
 
 function setInstallButtonVisible(visible) {
   if (!btnInstall) return;
