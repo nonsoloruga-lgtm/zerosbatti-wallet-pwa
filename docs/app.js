@@ -1493,7 +1493,7 @@ async function openEditor(state) {
     });
   };
 
-  const pickImage = async ({ outputMax, title, presetAspect }) => {
+  const pickImage = async ({ outputMax, title }) => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
@@ -1507,18 +1507,18 @@ async function openEditor(state) {
     if (choice === "use") {
       return await resizeImageDataUrlToMax({ dataUrl, max: outputMax, mime });
     }
-    return await openCropper({ dataUrl, outputMax, title, mime, presetAspect });
+    return await openCropper({ dataUrl, outputMax, title, mime });
   };
 
   backdrop.querySelector("#pickLogo").onclick = async () => {
-    const cropped = await pickImage({ presetAspect: "square", outputMax: 512, title: "Ritaglia logo" });
+    const cropped = await pickImage({ outputMax: 512, title: "Ritaglia logo" });
     if (cropped) {
       state.logoImage = cropped;
       refreshPvs();
     }
   };
   backdrop.querySelector("#pickBack").onclick = async () => {
-    const cropped = await pickImage({ presetAspect: "85:55", outputMax: 1200, title: "Ritaglia retro" });
+    const cropped = await pickImage({ outputMax: 1200, title: "Ritaglia retro" });
     if (cropped) {
       state.backImage = cropped;
       refreshPvs();
@@ -1569,27 +1569,13 @@ function clamp(n, a, b) {
   return Math.max(a, Math.min(b, n));
 }
 
-async function openCropper({ dataUrl, outputMax = 1200, title = "Ritaglia", mime = "image/jpeg", presetAspect = "free" }) {
+async function openCropper({ dataUrl, outputMax = 1200, title = "Ritaglia", mime = "image/jpeg" }) {
   // Cropper.js integration (with EXIF orientation fix for iOS).
   // eslint-disable-next-line no-undef
   if (typeof Cropper === "undefined") {
     alert("Editor ritaglio non disponibile (Cropper.js non caricato).");
     return null;
   }
-
-  const aspectFromPreset = (p) => {
-    if (p === "square") return 1;
-    if (p === "85:55") return 85 / 55;
-    if (p === "16:9") return 16 / 9;
-    return NaN; // free
-  };
-  const aspectLabel = (p) => {
-    if (p === "square") return "Quadrato";
-    if (p === "85:55") return "Tessera (85:55)";
-    if (p === "16:9") return "16:9";
-    return "Libero";
-  };
-  const defaultAspect = aspectFromPreset(presetAspect);
 
   const backdrop = document.createElement("div");
   backdrop.className = "cropjs-backdrop";
@@ -1609,10 +1595,6 @@ async function openCropper({ dataUrl, outputMax = 1200, title = "Ritaglia", mime
         <button class="cropjs__btn" id="cjRotateLeft" type="button">⟲</button>
         <button class="cropjs__btn" id="cjRotateRight" type="button">⟳</button>
         <button class="cropjs__btn" id="cjReset" type="button">Reset</button>
-        <select class="cropjs__select" id="cjAspect">
-          <option value="default">${aspectLabel(presetAspect)}</option>
-          <option value="free">Libero</option>
-        </select>
         <input class="cropjs__zoom" id="cjZoom" type="range" min="1" max="3" step="0.01" value="1" />
       </div>
 
@@ -1630,11 +1612,10 @@ async function openCropper({ dataUrl, outputMax = 1200, title = "Ritaglia", mime
   const imgEl = backdrop.querySelector("#cjImg");
   imgEl.src = dataUrl;
   const zoomEl = backdrop.querySelector("#cjZoom");
-  const aspectEl = backdrop.querySelector("#cjAspect");
 
   // eslint-disable-next-line no-undef
   const cropper = new Cropper(imgEl, {
-    aspectRatio: defaultAspect,
+    aspectRatio: NaN, // always free (no "Quadrato" option)
     viewMode: 1,
     dragMode: "move",
     autoCropArea: 0.92,
@@ -1714,14 +1695,7 @@ async function openCropper({ dataUrl, outputMax = 1200, title = "Ritaglia", mime
       cropper.reset();
       computeBaseZoom();
       zoomEl.value = "1";
-      aspectEl.value = "default";
-      cropper.setAspectRatio(defaultAspect);
     };
-    aspectEl.addEventListener("change", () => {
-      const v = aspectEl.value;
-      const next = v === "free" ? NaN : defaultAspect;
-      cropper.setAspectRatio(next);
-    });
     zoomEl.addEventListener("input", () => {
       const v = Number(zoomEl.value) || 1;
       try {
