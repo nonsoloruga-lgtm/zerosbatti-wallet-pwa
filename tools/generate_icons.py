@@ -26,7 +26,71 @@ def _trim_white(img: Image.Image, threshold: int = 8) -> Image.Image:
     return img.crop(bbox) if bbox else img
 
 
-def _contain_on_square(img: Image.Image, size: int, pad: float = 0.12) -> Image.Image:
+def _crop_to_main_block(img: Image.Image) -> Image.Image:
+    """
+    Heuristic crop to the "main" block of content (e.g. symbol) and ignore
+    secondary blocks (e.g. text below). Works best for logos on white background.
+    """
+    if img.mode != "RGBA":
+        img = img.convert("RGBA")
+
+    w, h = img.size
+    px = img.load()
+
+    def is_fg(r: int, g: int, b: int, a: int) -> bool:
+        if a < 10:
+            return False
+        # treat near-white as background
+        return not (r > 245 and g > 245 and b > 245)
+
+    # Count foreground pixels per row
+    row_counts: list[int] = []
+    for y in range(h):
+        c = 0
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if is_fg(r, g, b, a):
+                c += 1
+        row_counts.append(c)
+
+    # Find contiguous segments of foreground rows
+    min_row = max(10, int(w * 0.005))
+    segments: list[tuple[int, int]] = []
+    in_seg = False
+    start = 0
+    for y, c in enumerate(row_counts):
+        if c >= min_row and not in_seg:
+            in_seg = True
+            start = y
+        elif (c < min_row) and in_seg:
+            in_seg = False
+            segments.append((start, y - 1))
+    if in_seg:
+        segments.append((start, h - 1))
+
+    if len(segments) <= 1:
+        return img
+
+    # Score segments by total foreground area; keep the largest
+    best = None
+    best_score = -1
+    for a, b in segments:
+        score = sum(row_counts[a : b + 1])
+        if score > best_score:
+            best_score = score
+            best = (a, b)
+
+    if not best:
+        return img
+
+    top, bottom = best
+    pad = max(0, int(h * 0.01))
+    top = max(0, top - pad)
+    bottom = min(h - 1, bottom + pad)
+    return img.crop((0, top, w, bottom + 1))
+
+
+def _contain_on_square(img: Image.Image, size: int, pad: float = 0.06) -> Image.Image:
     """Fit logo into a square canvas with padding."""
     img = img.convert("RGBA")
     canvas = Image.new("RGBA", (size, size), (255, 255, 255, 0))
@@ -75,6 +139,17 @@ def main() -> None:
         action="store_true",
         help="Do not auto-trim white margins.",
     )
+    parser.add_argument(
+        "--keep-text",
+        action="store_true",
+        help="Do not auto-crop away a secondary text block (if present).",
+    )
+    parser.add_argument(
+        "--pad",
+        type=float,
+        default=0.06,
+        help="Padding around the logo when fitting into the square (default: 0.06).",
+    )
     args = parser.parse_args()
 
     src_path = Path(args.src)
@@ -88,24 +163,25 @@ def main() -> None:
     img = img.convert("RGBA")
     if not args.no_trim:
         img = _trim_white(img)
+    if not args.keep_text:
+        img = _crop_to_main_block(img)
 
     # PWA icons
-    _save_png(_contain_on_square(img, 192), ICONS_DIR / "icon-192.png")
-    _save_png(_contain_on_square(img, 512), ICONS_DIR / "icon-512.png")
-    _save_png(_contain_on_square(img, 768), ICONS_DIR / "icon-768.png")
+    _save_png(_contain_on_square(img, 192, pad=args.pad), ICONS_DIR / "icon-192.png")
+    _save_png(_contain_on_square(img, 512, pad=args.pad), ICONS_DIR / "icon-512.png")
+    _save_png(_contain_on_square(img, 768, pad=args.pad), ICONS_DIR / "icon-768.png")
 
     # Maskable icons
-    _save_png(_maskable(img, 192), ICONS_DIR / "icon-192-maskable.png")
-    _save_png(_maskable(img, 512), ICONS_DIR / "icon-512-maskable.png")
+    _save_png(_maskable(img, 192, scale=0.90), ICONS_DIR / "icon-192-maskable.png")
+    _save_png(_maskable(img, 512, scale=0.90), ICONS_DIR / "icon-512-maskable.png")
 
     # iOS icons
-    _save_png(_contain_on_square(img, 180, pad=0.10), ICONS_DIR / "apple-touch-icon.png")
-    _save_png(_contain_on_square(img, 167, pad=0.10), ICONS_DIR / "icon-167.png")
-    _save_png(_contain_on_square(img, 152, pad=0.10), ICONS_DIR / "icon-152.png")
+    _save_png(_contain_on_square(img, 180, pad=max(0.04, args.pad - 0.02)), ICONS_DIR / "apple-touch-icon.png")
+    _save_png(_contain_on_square(img, 167, pad=max(0.04, args.pad - 0.02)), ICONS_DIR / "icon-167.png")
+    _save_png(_contain_on_square(img, 152, pad=max(0.04, args.pad - 0.02)), ICONS_DIR / "icon-152.png")
 
     print("OK: icons generated in", ICONS_DIR)
 
 
 if __name__ == "__main__":
     main()
-
