@@ -26,6 +26,33 @@ def _trim_white(img: Image.Image, threshold: int = 8) -> Image.Image:
     return img.crop(bbox) if bbox else img
 
 
+def _white_to_transparent(img: Image.Image, threshold: int = 248) -> Image.Image:
+    """
+    Convert near-white pixels to transparent.
+    This removes the large white background from logos so maskable icons don't show
+    a big white rectangle.
+    """
+    img = img.convert("RGBA")
+    px = img.load()
+    w, h = img.size
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if a < 10:
+                continue
+            if r >= threshold and g >= threshold and b >= threshold:
+                px[x, y] = (r, g, b, 0)
+    return img
+
+
+def _trim_transparent(img: Image.Image) -> Image.Image:
+    """Trim fully transparent borders based on alpha channel."""
+    img = img.convert("RGBA")
+    alpha = img.split()[-1]
+    bbox = alpha.getbbox()
+    return img.crop(bbox) if bbox else img
+
+
 def _crop_to_main_block(img: Image.Image) -> Image.Image:
     """
     Heuristic crop to the "main" block of content (e.g. symbol) and ignore
@@ -145,6 +172,11 @@ def main() -> None:
         help="Do not auto-crop away a secondary text block (if present).",
     )
     parser.add_argument(
+        "--keep-white-bg",
+        action="store_true",
+        help="Do not convert near-white background to transparency.",
+    )
+    parser.add_argument(
         "--pad",
         type=float,
         default=0.06,
@@ -165,6 +197,9 @@ def main() -> None:
         img = _trim_white(img)
     if not args.keep_text:
         img = _crop_to_main_block(img)
+    if not args.keep_white_bg:
+        img = _white_to_transparent(img)
+    img = _trim_transparent(img)
 
     # PWA icons
     _save_png(_contain_on_square(img, 192, pad=args.pad), ICONS_DIR / "icon-192.png")
@@ -172,8 +207,8 @@ def main() -> None:
     _save_png(_contain_on_square(img, 768, pad=args.pad), ICONS_DIR / "icon-768.png")
 
     # Maskable icons
-    _save_png(_maskable(img, 192, scale=0.90), ICONS_DIR / "icon-192-maskable.png")
-    _save_png(_maskable(img, 512, scale=0.90), ICONS_DIR / "icon-512-maskable.png")
+    _save_png(_maskable(img, 192, scale=0.92), ICONS_DIR / "icon-192-maskable.png")
+    _save_png(_maskable(img, 512, scale=0.92), ICONS_DIR / "icon-512-maskable.png")
 
     # iOS icons
     _save_png(_contain_on_square(img, 180, pad=max(0.04, args.pad - 0.02)), ICONS_DIR / "apple-touch-icon.png")
