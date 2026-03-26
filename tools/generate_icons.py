@@ -133,7 +133,7 @@ def _contain_on_square(img: Image.Image, size: int, pad: float = 0.06) -> Image.
     return canvas
 
 
-def _maskable(img: Image.Image, size: int, bg=(127, 216, 214, 255), scale: float = 0.78) -> Image.Image:
+def _maskable(img: Image.Image, size: int, bg=(255, 255, 255, 255), scale: float = 0.80) -> Image.Image:
     """Create a maskable icon by putting the logo on a solid background with safe padding."""
     img = img.convert("RGBA")
     canvas = Image.new("RGBA", (size, size), bg)
@@ -182,6 +182,12 @@ def main() -> None:
         default=0.06,
         help="Padding around the logo when fitting into the square (default: 0.06).",
     )
+    parser.add_argument(
+        "--maskable-scale",
+        type=float,
+        default=0.80,
+        help="Scale for maskable icon content (default: 0.80).",
+    )
     args = parser.parse_args()
 
     src_path = Path(args.src)
@@ -207,8 +213,8 @@ def main() -> None:
     _save_png(_contain_on_square(img, 768, pad=args.pad), ICONS_DIR / "icon-768.png")
 
     # Maskable icons
-    _save_png(_maskable(img, 192, scale=0.92), ICONS_DIR / "icon-192-maskable.png")
-    _save_png(_maskable(img, 512, scale=0.92), ICONS_DIR / "icon-512-maskable.png")
+    _save_png(_maskable(img, 192, scale=args.maskable_scale), ICONS_DIR / "icon-192-maskable.png")
+    _save_png(_maskable(img, 512, scale=args.maskable_scale), ICONS_DIR / "icon-512-maskable.png")
 
     # iOS icons
     _save_png(_contain_on_square(img, 180, pad=max(0.04, args.pad - 0.02)), ICONS_DIR / "apple-touch-icon.png")
