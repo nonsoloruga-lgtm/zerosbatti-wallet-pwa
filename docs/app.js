@@ -44,14 +44,6 @@ const btnDelete = document.getElementById("btnDelete");
 let allCards = [];
 let activeCardId = null;
 
-const splash = document.getElementById("splash");
-function hideSplash() {
-  if (!splash) return;
-  splash.classList.add("splash--hidden");
-  // Remove from DOM after fade out (avoid intercepting taps).
-  window.setTimeout(() => splash.remove(), 400);
-}
-
 function setActiveTab(tab) {
   tabCards.classList.toggle("tab--active", tab === "cards");
   tabInfo.classList.toggle("tab--active", tab === "info");
@@ -1842,11 +1834,7 @@ async function loadCards() {
 
 async function bootstrap() {
   showView("cards");
-  try {
-    await loadCards();
-  } finally {
-    hideSplash();
-  }
+  await loadCards();
   updateInstallUi();
 }
 
