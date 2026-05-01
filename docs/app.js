@@ -360,7 +360,10 @@ function normalizeScannedCode(code, format) {
   // Many libraries report EAN-13 starting with "0" as UPC-A (12 digits) or omit format entirely.
   // In this app we prefer preserving the leading zero so the stored code matches the printed EAN-13.
   if (isDigits && text.length === 12) {
-    const looksLikeUpcOrEan = !fmt || fmt.includes("upc") || fmt.includes("ean");
+    // If format is unknown (common with some decoders that return enums/numbers),
+    // treat 12-digit numeric as UPC-A and convert to EAN-13 by prefixing "0".
+    // This matches the printed EAN-13 for the common "0xxxxxxxxxxx" case.
+    const looksLikeUpcOrEan = !fmt || fmt.includes("upc") || fmt.includes("ean") || /^\d+$/.test(fmt);
     if (looksLikeUpcOrEan) return `0${text}`;
   }
   return text;
@@ -625,6 +628,12 @@ async function detectFromImageFile(file) {
       const fmtName = String(fmt || "");
       const format = fmtName.toLowerCase().includes("qr") ? "qr_code" : fmtName;
       const code = normalizeScannedCode(text, format);
+      try {
+        // Debug aid: helps confirm what Android decoders return (format may be numeric enum).
+        console.debug("[zerosbatti] detectFromImageFile zxing", { raw: String(text || ""), format, normalized: code });
+      } catch {
+        // ignore
+      }
       return code ? { code, format } : null;
     } catch {
       return null;
@@ -654,6 +663,11 @@ async function detectFromImageFile(file) {
     try {
       const decodedText = await scanner.scanFile(normalized, true);
       const code = normalizeScannedCode(decodedText, "");
+      try {
+        console.debug("[zerosbatti] detectFromImageFile html5-qrcode", { raw: String(decodedText || ""), normalized: code });
+      } catch {
+        // ignore
+      }
       return code ? { code, format: "" } : null;
     } catch {
       return null;
@@ -678,6 +692,11 @@ async function detectFromImageFile(file) {
     if (!hit) return null;
     const format = hit.format || "";
     const code = normalizeScannedCode(hit.rawValue || "", format);
+    try {
+      console.debug("[zerosbatti] detectFromImageFile barcode-detector", { raw: String(hit.rawValue || ""), format, normalized: code });
+    } catch {
+      // ignore
+    }
     return code ? { code, format } : null;
   }
 
