@@ -803,7 +803,9 @@ async function openScannerBarcodeDetector() {
         const results = await detector.detect(canvas);
         const hit = results?.[0];
         if (hit && hit.rawValue) {
-          const out = { code: hit.rawValue, format: hit.format || "" };
+          const format = hit.format || "";
+          const code = normalizeScannedCode(hit.rawValue, format);
+          const out = { code, format };
           stop();
           return out;
         }
@@ -918,7 +920,9 @@ async function openScannerZXingCanvasLoop() {
           const text = result?.getText ? result.getText() : result?.text || "";
           const fmt = result?.getBarcodeFormat ? result.getBarcodeFormat() : "";
           if (text) {
-            const out = { code: String(text), format: String(fmt).toLowerCase().includes("qr") ? "qr_code" : "" };
+            const format = String(fmt).toLowerCase().includes("qr") ? "qr_code" : String(fmt || "");
+            const code = normalizeScannedCode(text, format);
+            const out = { code, format };
             stop();
             return out;
           }
