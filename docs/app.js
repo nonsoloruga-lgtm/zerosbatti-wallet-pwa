@@ -1,5 +1,9 @@
 import { getAllCards, putCard, deleteCard, newId } from "./db.js";
 
+const APP_BUILD = "2026-05-01 277fd37";
+// Expose for quick diagnostics in DevTools: `__zerosbattiBuild`
+window.__zerosbattiBuild = APP_BUILD;
+
 const COFFEE_URL = "https://paa.ge/zerosbatti/en";
 
 const views = {
@@ -1934,6 +1938,21 @@ if ("serviceWorker" in navigator) {
         // Proactively check updates when the app starts.
         try {
           reg.update();
+        } catch {
+          // ignore
+        }
+
+        // Also re-check when the tab becomes visible again (common on mobile).
+        try {
+          document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible") {
+              try {
+                reg.update();
+              } catch {
+                // ignore
+              }
+            }
+          });
         } catch {
           // ignore
         }
