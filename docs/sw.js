@@ -1,5 +1,5 @@
 /* Basic offline-first cache for the PWA. */
-const CACHE_NAME = "zerosbatti-cache-v44";
+const CACHE_NAME = "zerosbatti-cache-v45";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -30,6 +30,13 @@ self.addEventListener("install", (event) => {
       self.skipWaiting();
     })()
   );
+});
+
+self.addEventListener("message", (event) => {
+  const type = event?.data?.type || "";
+  if (type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("activate", (event) => {

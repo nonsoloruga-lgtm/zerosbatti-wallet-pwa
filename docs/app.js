@@ -1873,7 +1873,90 @@ bootstrap();
 // PWA SW
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+    const showUpdateToast = ({ onReload }) => {
+      // Avoid duplicates.
+      if (document.getElementById("swUpdateToast")) return;
+      const host = document.createElement("div");
+      host.id = "swUpdateToast";
+      host.style.position = "fixed";
+      host.style.left = "12px";
+      host.style.right = "12px";
+      host.style.bottom = "12px";
+      host.style.zIndex = "99999";
+      host.style.background = "rgba(20, 22, 26, 0.92)";
+      host.style.color = "#fff";
+      host.style.border = "1px solid rgba(255,255,255,0.18)";
+      host.style.borderRadius = "14px";
+      host.style.padding = "12px 12px";
+      host.style.boxShadow = "0 10px 30px rgba(0,0,0,0.35)";
+      host.style.backdropFilter = "blur(10px)";
+      host.innerHTML = `
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:900; line-height:1.15;">Aggiornamento disponibile</div>
+            <div style="opacity:.85; font-size:13px; margin-top:2px;">Ricarica per applicarlo (tessere salvate).</div>
+          </div>
+          <button id="swUpdateReload" class="btn btn--cta" style="white-space:nowrap; padding:10px 12px;">Ricarica</button>
+          <button id="swUpdateClose" class="btn" style="white-space:nowrap; padding:10px 12px;">×</button>
+        </div>
+      `;
+      document.body.appendChild(host);
+      host.querySelector("#swUpdateClose").onclick = () => host.remove();
+      host.querySelector("#swUpdateReload").onclick = () => onReload?.();
+    };
+
+    navigator.serviceWorker
+      .register("./sw.js")
+      .then((reg) => {
+        // Proactively check updates when the app starts.
+        try {
+          reg.update();
+        } catch {
+          // ignore
+        }
+
+        const requestReload = () => {
+          try {
+            reg.waiting?.postMessage({ type: "SKIP_WAITING" });
+          } catch {
+            // ignore
+          }
+          // The controllerchange event will fire once the new SW takes control.
+          // In case it doesn't (some iOS quirks), fallback to a timed reload.
+          setTimeout(() => {
+            try {
+              location.reload();
+            } catch {
+              // ignore
+            }
+          }, 1200);
+        };
+
+        // If there's already a waiting worker, prompt immediately.
+        if (reg.waiting && navigator.serviceWorker.controller) {
+          showUpdateToast({ onReload: requestReload });
+        }
+
+        reg.addEventListener("updatefound", () => {
+          const worker = reg.installing;
+          if (!worker) return;
+          worker.addEventListener("statechange", () => {
+            // "installed" with an existing controller means an update is ready.
+            if (worker.state === "installed" && navigator.serviceWorker.controller) {
+              showUpdateToast({ onReload: requestReload });
+            }
+          });
+        });
+
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          try {
+            location.reload();
+          } catch {
+            // ignore
+          }
+        });
+      })
+      .catch(() => {});
   });
 }
 
