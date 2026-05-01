@@ -349,6 +349,20 @@ function normalize(s) {
   return (s || "").toLowerCase().trim();
 }
 
+// Some scanners return UPC-A (12 digits) for EAN-13 codes that start with "0",
+// effectively dropping the leading zero. Keep codes as strings and restore the
+// leading zero when we can infer UPC-A.
+function normalizeScannedCode(code, format) {
+  const text = String(code ?? "").trim();
+  if (!text) return "";
+  const fmt = String(format ?? "").toLowerCase();
+  const isDigits = /^\d+$/.test(text);
+  // Many libraries report EAN-13 starting with "0" as UPC-A (12 digits) or omit format entirely.
+  // In this app we prefer preserving the leading zero so the stored code matches the printed EAN-13.
+  if (isDigits && text.length === 12 && (!fmt || fmt.includes("upc"))) return `0${text}`;
+  return text;
+}
+
 function hashString(s) {
   const str = String(s || "");
   let h = 2166136261;
@@ -605,8 +619,10 @@ async function detectFromImageFile(file) {
       const result = await reader.decodeFromCanvas(canvas);
       const text = result?.getText ? result.getText() : result?.text || "";
       const fmt = result?.getBarcodeFormat ? result.getBarcodeFormat() : null;
-      const format = String(fmt || "").toLowerCase().includes("qr") ? "qr_code" : "";
-      return text ? { code: String(text), format } : null;
+      const fmtName = String(fmt || "");
+      const format = fmtName.toLowerCase().includes("qr") ? "qr_code" : fmtName;
+      const code = normalizeScannedCode(text, format);
+      return code ? { code, format } : null;
     } catch {
       return null;
     } finally {
@@ -634,7 +650,8 @@ async function detectFromImageFile(file) {
     const scanner = new Html5Qrcode(id);
     try {
       const decodedText = await scanner.scanFile(normalized, true);
-      return decodedText ? { code: String(decodedText), format: "" } : null;
+      const code = normalizeScannedCode(decodedText, "");
+      return code ? { code, format: "" } : null;
     } catch {
       return null;
     } finally {
@@ -655,7 +672,10 @@ async function detectFromImageFile(file) {
     const detector = new BarcodeDetector({ formats });
     const results = await detector.detect(bitmap);
     const hit = results?.[0];
-    return hit ? { code: hit.rawValue || "", format: hit.format || "" } : null;
+    if (!hit) return null;
+    const format = hit.format || "";
+    const code = normalizeScannedCode(hit.rawValue || "", format);
+    return code ? { code, format } : null;
   }
 
   return null;
@@ -1057,9 +1077,14 @@ async function openScannerHtml5Qrcode() {
       decodedResult?.result?.format?.format ||
       decodedResult?.result?.format ||
       decodedResult?.format?.formatName ||
+      decodedResult?.format ||
       "";
     const s = String(name).toLowerCase();
-    return s.includes("qr") ? "qr_code" : "code_128";
+    if (s.includes("qr")) return "qr_code";
+    if (s.includes("upc")) return "upc_a";
+    if (s.includes("ean_13") || s.includes("ean-13") || s.includes("ean13")) return "ean_13";
+    if (s.includes("ean_8") || s.includes("ean-8") || s.includes("ean8")) return "ean_8";
+    return "code_128";
   };
 
   // Prefer explicit supported formats when available (helps 1D barcodes on some builds).
@@ -1144,7 +1169,9 @@ async function openScannerHtml5Qrcode() {
 
     const onDecode = async (decodedText, decodedResult) => {
       if (!decodedText) return;
-      await finalize({ code: String(decodedText), format: mapFormat(decodedResult) });
+      const format = mapFormat(decodedResult);
+      const code = normalizeScannedCode(decodedText, format);
+      await finalize({ code, format });
     };
 
     const resetScanner = async () => {

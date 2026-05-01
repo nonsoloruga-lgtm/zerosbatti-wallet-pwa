@@ -6,6 +6,7 @@ Questa cartella contiene una versione **PWA** (web app installabile) ispirata al
 - Serve un **URL HTTPS** (GitHub Pages va benissimo).
 - Scanner barcode/QR:
   - Funziona al meglio su **Chrome Android** (usa `BarcodeDetector` + fotocamera).
+  - Nota: alcuni scanner possono leggere un EAN-13 che inizia con `0` come UPC-A (12 cifre). In app viene ripristinato lo `0` iniziale quando il formato e' UPC.
 
 ## Avvio in locale (per test)
 Da PowerShell, dentro `zerosbatti-pwa`:
