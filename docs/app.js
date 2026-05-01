@@ -359,7 +359,10 @@ function normalizeScannedCode(code, format) {
   const isDigits = /^\d+$/.test(text);
   // Many libraries report EAN-13 starting with "0" as UPC-A (12 digits) or omit format entirely.
   // In this app we prefer preserving the leading zero so the stored code matches the printed EAN-13.
-  if (isDigits && text.length === 12 && (!fmt || fmt.includes("upc"))) return `0${text}`;
+  if (isDigits && text.length === 12) {
+    const looksLikeUpcOrEan = !fmt || fmt.includes("upc") || fmt.includes("ean");
+    if (looksLikeUpcOrEan) return `0${text}`;
+  }
   return text;
 }
 
