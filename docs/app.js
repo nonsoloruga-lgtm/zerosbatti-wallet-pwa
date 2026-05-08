@@ -355,6 +355,18 @@ function normalize(s) {
   return (s || "").toLowerCase().trim();
 }
 
+function normalizeDetectedFormat(format) {
+  const s = String(format ?? "").toLowerCase();
+  if (!s) return "";
+  if (s.includes("qr")) return "qr_code";
+  if (s.includes("upc")) return "upc_a";
+  if (s.includes("ean_13") || s.includes("ean-13") || s.includes("ean13")) return "ean_13";
+  if (s.includes("ean_8") || s.includes("ean-8") || s.includes("ean8")) return "ean_8";
+  if (s.includes("code_128") || s.includes("code-128") || s.includes("code128")) return "code_128";
+  if (s.includes("code_39") || s.includes("code-39") || s.includes("code39")) return "code_39";
+  return s;
+}
+
 // Some scanners return UPC-A (12 digits) for EAN-13 codes that start with "0",
 // effectively dropping the leading zero. Keep codes as strings and restore the
 // leading zero when we can infer UPC-A.
@@ -363,7 +375,7 @@ function normalizeScannedCode(code, format) {
   const text = String(raw).trim();
   if (!text) return "";
 
-  const fmt = String(format ?? "").toLowerCase();
+  const fmt = normalizeDetectedFormat(format);
   const isDigits = /^\d+$/.test(text);
 
   // If a decoder gives us a *number* (or we receive a numeric-looking string that is shorter than
@@ -685,14 +697,35 @@ async function detectFromImageFile(file) {
     // eslint-disable-next-line no-undef
     const scanner = new Html5Qrcode(id);
     try {
-      const decodedText = await scanner.scanFile(normalized, true);
-      const code = normalizeScannedCode(decodedText, "");
+      let decodedText = "";
+      let decodedFormat = "";
+
+      if (typeof scanner.scanFileV2 === "function") {
+        const out = await scanner.scanFileV2(normalized, true);
+        decodedText = String(out?.decodedText || out?.text || out?.decodedTextResult || out || "");
+        const fmtLike =
+          out?.result?.format?.formatName ||
+          out?.result?.format?.format ||
+          out?.result?.format ||
+          out?.format?.formatName ||
+          out?.format ||
+          "";
+        decodedFormat = normalizeDetectedFormat(fmtLike);
+      } else {
+        decodedText = await scanner.scanFile(normalized, true);
+      }
+
+      const code = normalizeScannedCode(decodedText, decodedFormat);
       try {
-        console.debug("[zerosbatti] detectFromImageFile html5-qrcode", { raw: String(decodedText || ""), normalized: code });
+        console.debug("[zerosbatti] detectFromImageFile html5-qrcode", {
+          raw: String(decodedText || ""),
+          format: decodedFormat,
+          normalized: code
+        });
       } catch {
         // ignore
       }
-      return code ? { code, format: "" } : null;
+      return code ? { code, format: decodedFormat } : null;
     } catch {
       return null;
     } finally {
@@ -1503,7 +1536,9 @@ async function openManageFlow({ action, mode, card }) {
 
   if (detection && detection.code) {
     state.code = detection.code;
-    state.format = detection.format === "qr_code" ? "qr" : "code128";
+    const fmt = normalizeDetectedFormat(detection.format);
+    if (fmt === "qr_code") state.format = "qr";
+    else if (fmt) state.format = "code128";
   }
 
   await openEditor(state);
