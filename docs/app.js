@@ -381,12 +381,12 @@ function normalizeScannedCode(code, format) {
 
     // Many libraries report EAN-13 starting with "0" as UPC-A (12 digits) or omit format entirely.
     // In this app we prefer preserving the leading zero so the stored code matches the printed EAN-13.
+    //
+    // Force rule (user request): if we got 12 digits and the format isn't *explicitly* EAN-8,
+    // assume it's an EAN-13 that lost the leading zero and restore it.
     if (text.length === 12) {
-      // If format is unknown (common with some decoders that return enums/numbers),
-      // treat 12-digit numeric as UPC-A and convert to EAN-13 by prefixing "0".
-      // This matches the printed EAN-13 for the common "0xxxxxxxxxxx" case.
-      const looksLikeUpcOrEan = !fmt || fmt.includes("upc") || fmt.includes("ean") || /^\d+$/.test(fmt);
-      if (looksLikeUpcOrEan) return `0${text}`;
+      const isExplicitEan8 = fmt.includes("ean_8") || fmt.includes("ean-8") || fmt.includes("ean8");
+      if (!isExplicitEan8) return `0${text}`;
     }
   }
 
