@@ -518,8 +518,8 @@ function renderBarcode(card) {
       format: "CODE128",
       displayValue: false,
       margin: 0,
-      width: 1.6,
-      height: 144
+      width: 1.28,
+      height: 115.2
     });
   } catch {
     barcodeSvg.innerHTML = "";
