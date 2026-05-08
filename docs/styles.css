@@ -168,6 +168,8 @@ body {
   text-overflow: ellipsis;
   letter-spacing: -0.2px;
   text-align: center;
+  font-family: "Playfair Display", ui-serif, Georgia, "Times New Roman", serif;
+  font-weight: 700;
 }
 
 .fab {
