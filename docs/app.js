@@ -156,11 +156,13 @@ function buildBackupPayload(cards) {
 
 function sanitizeImportedCard(raw) {
   const c = raw && typeof raw === "object" ? raw : {};
+  const importedFormat = typeof c.format === "string" ? c.format : "";
+  const importedCode = typeof c.code === "string" ? c.code : (c.code == null ? "" : String(c.code));
   return {
     id: typeof c.id === "string" && c.id ? c.id : newId(),
     name: typeof c.name === "string" ? c.name : "",
-    code: typeof c.code === "string" ? c.code : "",
-    format: typeof c.format === "string" ? c.format : "",
+    code: normalizeScannedCode(importedCode, importedFormat),
+    format: importedFormat,
     logoImage: typeof c.logoImage === "string" ? c.logoImage : "",
     frontImage: typeof c.frontImage === "string" ? c.frontImage : "",
     backImage: typeof c.backImage === "string" ? c.backImage : ""
@@ -357,19 +359,37 @@ function normalize(s) {
 // effectively dropping the leading zero. Keep codes as strings and restore the
 // leading zero when we can infer UPC-A.
 function normalizeScannedCode(code, format) {
-  const text = String(code ?? "").trim();
+  const raw = code ?? "";
+  const text = String(raw).trim();
   if (!text) return "";
+
   const fmt = String(format ?? "").toLowerCase();
   const isDigits = /^\d+$/.test(text);
-  // Many libraries report EAN-13 starting with "0" as UPC-A (12 digits) or omit format entirely.
-  // In this app we prefer preserving the leading zero so the stored code matches the printed EAN-13.
-  if (isDigits && text.length === 12) {
-    // If format is unknown (common with some decoders that return enums/numbers),
-    // treat 12-digit numeric as UPC-A and convert to EAN-13 by prefixing "0".
-    // This matches the printed EAN-13 for the common "0xxxxxxxxxxx" case.
-    const looksLikeUpcOrEan = !fmt || fmt.includes("upc") || fmt.includes("ean") || /^\d+$/.test(fmt);
-    if (looksLikeUpcOrEan) return `0${text}`;
+
+  // If a decoder gives us a *number* (or we receive a numeric-looking string that is shorter than
+  // the expected length), we can safely pad with leading zeros for fixed-length symbologies.
+  // This fixes the common "leading 0 dropped" issue for EAN/UPC.
+  if (isDigits) {
+    let expectedLen = 0;
+    if (fmt.includes("ean_13") || fmt.includes("ean-13") || fmt.includes("ean13")) expectedLen = 13;
+    else if (fmt.includes("ean_8") || fmt.includes("ean-8") || fmt.includes("ean8")) expectedLen = 8;
+    else if (fmt.includes("upc_a") || fmt.includes("upc-a") || fmt.includes("upca") || fmt.includes("upc")) expectedLen = 12;
+
+    if (expectedLen && text.length < expectedLen) {
+      return text.padStart(expectedLen, "0");
+    }
+
+    // Many libraries report EAN-13 starting with "0" as UPC-A (12 digits) or omit format entirely.
+    // In this app we prefer preserving the leading zero so the stored code matches the printed EAN-13.
+    if (text.length === 12) {
+      // If format is unknown (common with some decoders that return enums/numbers),
+      // treat 12-digit numeric as UPC-A and convert to EAN-13 by prefixing "0".
+      // This matches the printed EAN-13 for the common "0xxxxxxxxxxx" case.
+      const looksLikeUpcOrEan = !fmt || fmt.includes("upc") || fmt.includes("ean") || /^\d+$/.test(fmt);
+      if (looksLikeUpcOrEan) return `0${text}`;
+    }
   }
+
   return text;
 }
 
