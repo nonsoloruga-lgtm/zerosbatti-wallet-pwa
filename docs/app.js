@@ -515,18 +515,34 @@ function renderBarcode(card) {
       barcodeSvg.innerHTML = "";
       return;
     }
+
+    // Important: this <svg> is also used by JsBarcode, which sets width/height/viewBox.
+    // If we don't reset those, the QR <image> can appear stretched or clipped.
+    try {
+      barcodeSvg.removeAttribute("viewBox");
+      barcodeSvg.removeAttribute("width");
+      barcodeSvg.removeAttribute("height");
+      barcodeSvg.removeAttribute("x");
+      barcodeSvg.removeAttribute("y");
+    } catch {
+      // ignore
+    }
+    const size = 256;
+    barcodeSvg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+    barcodeSvg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+
     // qrcodejs renders into a DOM element; use a temporary container and then clone as an <img>.
     const tmp = document.createElement("div");
     tmp.style.display = "none";
     document.body.appendChild(tmp);
     tmp.innerHTML = "";
     // eslint-disable-next-line no-undef
-    new QRCode(tmp, { text: card.code, width: 256, height: 256, correctLevel: QRCode.CorrectLevel.M });
+    new QRCode(tmp, { text: card.code, width: size, height: size, correctLevel: QRCode.CorrectLevel.M });
     const canvas = tmp.querySelector("canvas");
     const img = tmp.querySelector("img");
     const dataUrl = canvas ? canvas.toDataURL("image/png") : (img ? img.src : "");
     if (dataUrl) {
-      barcodeSvg.innerHTML = `<image href="${dataUrl}" width="100%" height="256" preserveAspectRatio="xMidYMid meet"></image>`;
+      barcodeSvg.innerHTML = `<image href="${dataUrl}" x="0" y="0" width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet"></image>`;
     }
     tmp.remove();
     return;
