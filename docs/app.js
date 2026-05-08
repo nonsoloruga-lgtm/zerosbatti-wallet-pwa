@@ -158,11 +158,12 @@ function sanitizeImportedCard(raw) {
   const c = raw && typeof raw === "object" ? raw : {};
   const importedFormat = typeof c.format === "string" ? c.format : "";
   const importedCode = typeof c.code === "string" ? c.code : (c.code == null ? "" : String(c.code));
+  const inferredFormat = !importedFormat && isLikelyQrPayload(importedCode) ? "qr" : importedFormat;
   return {
     id: typeof c.id === "string" && c.id ? c.id : newId(),
     name: typeof c.name === "string" ? c.name : "",
     code: normalizeScannedCode(importedCode, importedFormat),
-    format: importedFormat,
+    format: inferredFormat,
     logoImage: typeof c.logoImage === "string" ? c.logoImage : "",
     frontImage: typeof c.frontImage === "string" ? c.frontImage : "",
     backImage: typeof c.backImage === "string" ? c.backImage : ""
@@ -365,6 +366,16 @@ function normalizeDetectedFormat(format) {
   if (s.includes("code_128") || s.includes("code-128") || s.includes("code128")) return "code_128";
   if (s.includes("code_39") || s.includes("code-39") || s.includes("code39")) return "code_39";
   return s;
+}
+
+function isLikelyQrPayload(code) {
+  const s = String(code ?? "").trim();
+  if (!s) return false;
+  const lower = s.toLowerCase();
+  if (lower.startsWith("http://") || lower.startsWith("https://")) return true;
+  if (/[^0-9]/.test(s)) return true;
+  if (/^\d+$/.test(s) && ![8, 12, 13, 14].includes(s.length)) return true;
+  return false;
 }
 
 // Some scanners return UPC-A (12 digits) for EAN-13 codes that start with "0",
@@ -1539,6 +1550,7 @@ async function openManageFlow({ action, mode, card }) {
     const fmt = normalizeDetectedFormat(detection.format);
     if (fmt === "qr_code") state.format = "qr";
     else if (fmt) state.format = "code128";
+    else state.format = isLikelyQrPayload(detection.code) ? "qr" : "code128";
   }
 
   await openEditor(state);
@@ -1940,6 +1952,18 @@ async function openCropper({ dataUrl, outputMax = 1200, title = "Ritaglia", mime
 
 async function loadCards() {
   allCards = await getAllCards();
+
+  // Backfill QR format for cards created/imported when the decoder couldn't report it.
+  try {
+    const toFix = allCards.filter((c) => c && c.code && c.format !== "qr" && isLikelyQrPayload(c.code));
+    for (const c of toFix) {
+      c.format = "qr";
+      await putCard(c);
+    }
+  } catch {
+    // ignore
+  }
+
   allCards.sort((a, b) => (a.name || "").localeCompare(b.name || "", navigator.language, { sensitivity: "base" }));
   renderCards();
 }
