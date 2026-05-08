@@ -30,8 +30,8 @@ body {
   border-bottom-right-radius: 18px;
   box-shadow: var(--shadow);
 }
-.topbar__title { font-weight: 800; letter-spacing: 0.2px; }
-.topbar__subtitle { font-size: 12px; opacity: 0.92; margin-top: 2px; }
+.topbar__title { font-weight: 900; letter-spacing: 0.2px; font-size: 21px; line-height: 1.1; }
+.topbar__subtitle { font-size: 13px; opacity: 0.92; margin-top: 4px; }
 .topbar__actions { display: flex; gap: 8px; }
 
 .iconbtn {
@@ -215,11 +215,12 @@ body {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  color: var(--muted);
+  color: rgba(30, 42, 59, 0.62);
 }
 .tab--active { color: var(--soft-teal); }
 .tab__icon { font-size: 20px; }
-.tab__label { font-size: 12px; font-weight: 700; }
+.tab__label { font-size: 13px; font-weight: 900; color: rgba(30, 42, 59, 0.78); }
+.tab--active .tab__label { color: rgba(15, 127, 123, 0.95); }
 
 .backlink {
   border: 0;
