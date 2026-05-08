@@ -498,12 +498,12 @@ function renderBarcode(card) {
     document.body.appendChild(tmp);
     tmp.innerHTML = "";
     // eslint-disable-next-line no-undef
-    new QRCode(tmp, { text: card.code, width: 320, height: 320, correctLevel: QRCode.CorrectLevel.M });
+    new QRCode(tmp, { text: card.code, width: 256, height: 256, correctLevel: QRCode.CorrectLevel.M });
     const canvas = tmp.querySelector("canvas");
     const img = tmp.querySelector("img");
     const dataUrl = canvas ? canvas.toDataURL("image/png") : (img ? img.src : "");
     if (dataUrl) {
-      barcodeSvg.innerHTML = `<image href="${dataUrl}" width="100%" height="320" preserveAspectRatio="xMidYMid meet"></image>`;
+      barcodeSvg.innerHTML = `<image href="${dataUrl}" width="100%" height="256" preserveAspectRatio="xMidYMid meet"></image>`;
     }
     tmp.remove();
     return;
