@@ -1,6 +1,6 @@
 import { getAllCards, putCard, deleteCard, newId } from "./db.js";
 
-const APP_BUILD = "2026-05-01 277fd37";
+const APP_BUILD = "2026-07-11 update-safe-cache";
 // Expose for quick diagnostics in DevTools: `__zerosbattiBuild`
 window.__zerosbattiBuild = APP_BUILD;
 
@@ -31,6 +31,8 @@ btnCoffee.addEventListener("click", () => window.open(COFFEE_URL, "_blank", "noo
 const btnExport = document.getElementById("btnExport");
 const btnImport = document.getElementById("btnImport");
 const persistStatus = document.getElementById("persistStatus");
+const btnCheckUpdate = document.getElementById("btnCheckUpdate");
+const updateStatus = document.getElementById("updateStatus");
 
 const btnBackToCards = document.getElementById("btnBackToCards");
 btnBackToCards.addEventListener("click", () => showView("cards"));
@@ -47,6 +49,12 @@ const btnDelete = document.getElementById("btnDelete");
 
 let allCards = [];
 let activeCardId = null;
+let swRegistration = null;
+let hasReloadedForUpdate = false;
+
+function setUpdateStatus(message) {
+  if (updateStatus) updateStatus.textContent = message;
+}
 
 function setActiveTab(tab) {
   tabCards.classList.toggle("tab--active", tab === "cards");
@@ -2016,7 +2024,7 @@ if ("serviceWorker" in navigator) {
         <div style="display:flex; align-items:center; gap:10px;">
           <div style="flex:1; min-width:0;">
             <div style="font-weight:900; line-height:1.15;">Aggiornamento disponibile</div>
-            <div style="opacity:.85; font-size:13px; margin-top:2px;">Ricarica per applicarlo (tessere salvate).</div>
+            <div style="opacity:.85; font-size:13px; margin-top:2px;">Ricarica per applicarlo. Le tessere restano salvate.</div>
           </div>
           <button id="swUpdateReload" class="btn btn--cta" style="white-space:nowrap; padding:10px 12px;">Ricarica</button>
           <button id="swUpdateClose" class="btn" style="white-space:nowrap; padding:10px 12px;">×</button>
@@ -2027,9 +2035,66 @@ if ("serviceWorker" in navigator) {
       host.querySelector("#swUpdateReload").onclick = () => onReload?.();
     };
 
+    const checkForUpdates = async ({ manual = false } = {}) => {
+      if (!swRegistration) {
+        if (manual) setUpdateStatus("Controllo aggiornamenti non disponibile su questo dispositivo.");
+        return false;
+      }
+
+      if (manual) setUpdateStatus("Controllo aggiornamenti in corso...");
+
+      try {
+        await swRegistration.update();
+      } catch {
+        if (manual) setUpdateStatus("Controllo fallito. Riprova con una connessione attiva.");
+        return false;
+      }
+
+      if (swRegistration.waiting && navigator.serviceWorker.controller) {
+        setUpdateStatus("Aggiornamento pronto. Premi Ricarica: le tessere restano salvate.");
+        showUpdateToast({ onReload: requestReload });
+        return true;
+      }
+
+      try {
+        const res = await fetch(`./app.js?build-check=${Date.now()}`, { cache: "no-store" });
+        const source = await res.text();
+        const match = source.match(/const APP_BUILD = "([^"]+)"/);
+        const remoteBuild = match?.[1] || "";
+        if (remoteBuild && remoteBuild !== APP_BUILD) {
+          setUpdateStatus("Nuova versione rilevata. Chiudi e riapri l'app se non compare Ricarica.");
+          showUpdateToast({ onReload: requestReload });
+          return true;
+        }
+      } catch {
+        // ignore build probe failures
+      }
+
+      if (manual) setUpdateStatus("Hai già l'ultima versione disponibile.");
+      return false;
+    };
+
+    const requestReload = () => {
+      setUpdateStatus("Aggiornamento in applicazione. Le tessere restano salvate.");
+      try {
+        swRegistration?.waiting?.postMessage({ type: "SKIP_WAITING" });
+      } catch {
+        // ignore
+      }
+      setTimeout(() => {
+        try {
+          location.reload();
+        } catch {
+          // ignore
+        }
+      }, 1200);
+    };
+
     navigator.serviceWorker
       .register("./sw.js")
       .then((reg) => {
+        swRegistration = reg;
+        setUpdateStatus("Aggiornare la webapp non cancella le tessere salvate.");
         // Proactively check updates when the app starts.
         try {
           reg.update();
@@ -2052,25 +2117,9 @@ if ("serviceWorker" in navigator) {
           // ignore
         }
 
-        const requestReload = () => {
-          try {
-            reg.waiting?.postMessage({ type: "SKIP_WAITING" });
-          } catch {
-            // ignore
-          }
-          // The controllerchange event will fire once the new SW takes control.
-          // In case it doesn't (some iOS quirks), fallback to a timed reload.
-          setTimeout(() => {
-            try {
-              location.reload();
-            } catch {
-              // ignore
-            }
-          }, 1200);
-        };
-
         // If there's already a waiting worker, prompt immediately.
         if (reg.waiting && navigator.serviceWorker.controller) {
+          setUpdateStatus("Aggiornamento pronto. Premi Ricarica: le tessere restano salvate.");
           showUpdateToast({ onReload: requestReload });
         }
 
@@ -2080,20 +2129,31 @@ if ("serviceWorker" in navigator) {
           worker.addEventListener("statechange", () => {
             // "installed" with an existing controller means an update is ready.
             if (worker.state === "installed" && navigator.serviceWorker.controller) {
+              setUpdateStatus("Aggiornamento pronto. Premi Ricarica: le tessere restano salvate.");
               showUpdateToast({ onReload: requestReload });
             }
           });
         });
 
         navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if (hasReloadedForUpdate) return;
+          hasReloadedForUpdate = true;
           try {
             location.reload();
           } catch {
             // ignore
           }
         });
+
+        if (btnCheckUpdate) {
+          btnCheckUpdate.addEventListener("click", () => {
+            void checkForUpdates({ manual: true });
+          });
+        }
       })
-      .catch(() => {});
+      .catch(() => {
+        setUpdateStatus("Aggiornamenti automatici non disponibili su questo browser.");
+      });
   });
 }
 
