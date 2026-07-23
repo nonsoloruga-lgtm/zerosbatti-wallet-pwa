@@ -559,7 +559,7 @@ function renderBarcode(card) {
     } catch {
       // ignore
     }
-    const size = 256;
+    const size = 180;
     barcodeSvg.setAttribute("viewBox", `0 0 ${size} ${size}`);
     barcodeSvg.setAttribute("preserveAspectRatio", "xMidYMid meet");
 
