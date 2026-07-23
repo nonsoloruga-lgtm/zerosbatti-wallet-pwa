@@ -17,6 +17,7 @@ const cardsEmpty = document.getElementById("cardsEmpty");
 
 const btnSearch = document.getElementById("btnSearch");
 const btnVoice = document.getElementById("btnVoice");
+const btnShare = document.getElementById("btnShare");
 const btnInstall = document.getElementById("btnInstall");
 const searchRow = document.getElementById("searchRow");
 const searchInput = document.getElementById("searchInput");
@@ -51,6 +52,29 @@ let allCards = [];
 let activeCardId = null;
 let swRegistration = null;
 let hasReloadedForUpdate = false;
+
+if (btnShare) {
+  btnShare.addEventListener("click", async () => {
+    const shareUrl = new URL("./", document.baseURI).href;
+    const shareData = {
+      title: "ZeroSbatti Wallet",
+      text: "Prova ZeroSbatti Wallet: le tue tessere sempre a portata di mano.",
+      url: shareUrl
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+        return;
+      }
+      await navigator.clipboard.writeText(shareUrl);
+      alert("Link della PWA copiato. Ora puoi incollarlo in WhatsApp o dove preferisci.");
+    } catch (error) {
+      if (error?.name === "AbortError") return;
+      window.prompt("Copia il link della PWA:", shareUrl);
+    }
+  });
+}
 
 function setUpdateStatus(message) {
   if (updateStatus) updateStatus.textContent = message;

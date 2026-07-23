@@ -1,5 +1,5 @@
 /* Basic offline-first cache for the PWA. */
-const CACHE_NAME = "zerosbatti-cache-v54";
+const CACHE_NAME = "zerosbatti-cache-v55";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -85,3 +85,4 @@ self.addEventListener("fetch", (event) => {
     })()
   );
 });
+
